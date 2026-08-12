@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Habit Tracker - Stats</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: #0a0a0a;
+      color: #f5f1ed;
+    }
+    .container {
+      min-height: 100vh;
+      background: #0a0a0a;
+    }
+    .stats-container {
+      padding: 12px 14px;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+    .stat-card {
+      background: #141411;
+      border: 1px solid #2a2925;
+      border-radius: 6px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .stat-label {
+      color: #8a8985;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .stat-value {
+      color: #f5f1ed;
+      font-size: 24px;
+      font-weight: 400;
+      margin-bottom: 4px;
+    }
+    .stat-meta {
+      color: #8a8985;
+      font-size: 11px;
+      display: flex;
+      gap: 12px;
+    }
+    .trend {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .trend.up {
+      color: #d97757;
+    }
+    .trend.down {
+      color: #7a9d7d;
+    }
+    .trend-icon {
+      font-size: 12px;
+    }
+    .chart-container {
+      background: #141411;
+      border: 1px solid #2a2925;
+      border-radius: 6px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .chart-title {
+      color: #8a8985;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    .chart {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-around;
+      height: 180px;
+      gap: 6px;
+    }
+    .bar-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      flex: 1;
+    }
+    .bar {
+      width: 100%;
+      background: #d97757;
+      border-radius: 3px 3px 0 0;
+      opacity: 0.8;
+      transition: opacity 0.2s;
+      position: relative;
+      min-height: 4px;
+    }
+    .bar:hover {
+      opacity: 1;
+    }
+    .bar-label {
+      font-size: 9px;
+      color: #7a7570;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .bar-value {
+      font-size: 8px;
+      color: #8a8985;
+      position: absolute;
+      top: -16px;
+      left: 50%;
+      transform: translateX(-50%);
+      white-space: nowrap;
+    }
+    .weight-entry {
+      background: #0a0a0a;
+      border: 1px solid #2a2925;
+      border-radius: 4px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .weight-date {
+      font-size: 11px;
+      color: #8a8985;
+    }
+    .weight-value {
+      font-size: 12px;
+      color: #f5f1ed;
+      font-weight: 500;
+    }
+    .goal-section {
+      background: #141411;
+      border: 1px solid #2a2925;
+      border-radius: 6px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .goal-label {
+      color: #8a8985;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+    .progress-bar {
+      background: #0a0a0a;
+      border-radius: 4px;
+      height: 8px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+    .progress-fill {
+      background: #d97757;
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.3s ease;
+    }
+    .progress-text {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: #8a8985;
+    }
+    .insight {
+      background: rgba(217, 119, 87, 0.1);
+      border: 1px solid rgba(217, 119, 87, 0.2);
+      border-radius: 4px;
+      padding: 12px;
+      margin-bottom: 16px;
+      font-size: 11px;
+      color: #d97757;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script>
+    // Mock weight data for the past 30 days
+    const weightData = [
+      { date: '1 Aug', weight: 68.5 },
+      { date: '2 Aug', weight: 68.3 },
+      { date: '3 Aug', weight: 68.1 },
+      { date: '4 Aug', weight: 68.2 },
+      { date: '5 Aug', weight: 67.9 },
+      { date: '6 Aug', weight: 67.8 },
+      { date: '7 Aug', weight: 67.6 },
+      { date: '8 Aug', weight: 67.5 },
+      { date: '9 Aug', weight: 67.4 },
+      { date: '10 Aug', weight: 67.3 },
+      { date: '11 Aug', weight: 67.2 },
+      { date: '12 Aug', weight: 65.2 },
+    ];
+
+    const startWeight = 68.5;
+    const currentWeight = 65.2;
+    const goalWeight = 63.0;
+    const weightLost = startWeight - currentWeight;
+    const weightToGoal = currentWeight - goalWeight;
+    const totalGoal = startWeight - goalWeight;
+    const progressPercent = ((weightLost / totalGoal) * 100).toFixed(1);
+
+    function renderStatsPage() {
+      const html = `
+        <div class="stats-container">
+          <!-- Weight Loss Summary -->
+          <div class="stat-card">
+            <div class="stat-label">Weight Loss Progress</div>
+            <div class="stat-value">${weightLost.toFixed(1)} kg</div>
+            <div class="stat-meta">
+              <div>Started: ${startWeight.toFixed(1)} kg</div>
+              <div class="trend up">
+                <span class="trend-icon">↓</span>
+                ${((weightLost / startWeight) * 100).toFixed(1)}%
+              </div>
+            </div>
+          </div>
+
+          <!-- Current Weight -->
+          <div class="stat-card">
+            <div class="stat-label">Current Weight</div>
+            <div class="stat-value">${currentWeight.toFixed(1)} kg</div>
+            <div class="stat-meta">
+              <div>Goal: ${goalWeight.toFixed(1)} kg</div>
+              <div>${Math.abs(weightToGoal).toFixed(1)} kg to go</div>
+            </div>
+          </div>
+
+          <!-- Goal Progress -->
+          <div class="goal-section">
+            <div class="goal-label">Goal Progress</div>
+            <div class="progress-bar">
+              <div class="progress-fill" style="width: ${progressPercent}%"></div>
+            </div>
+            <div class="progress-text">
+              <span>${progressPercent}% complete</span>
+              <span>${weightToGoal.toFixed(1)} kg remaining</span>
+            </div>
+          </div>
+
+          <!-- Insight -->
+          <div class="insight">
+            💪 Great progress! You've lost ${weightLost.toFixed(1)} kg in the past ${weightData.length} days. Keep up the consistent habit tracking!
+          </div>
+
+          <!-- Weight Chart (Last 12 entries) -->
+          <div class="chart-container">
+            <div class="chart-title">Weight Trend (Last 12 Days)</div>
+            <div class="chart">
+              ${getChartBars()}
+            </div>
+          </div>
+
+          <!-- Recent Entries -->
+          <div class="stat-card">
+            <div class="stat-label">Recent Entries</div>
+            <div style="margin-top: 12px;">
+              ${getRecentEntries()}
+            </div>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('root').innerHTML = html;
+    }
+
+    function getChartBars() {
+      const minWeight = Math.min(...weightData.map(d => d.weight));
+      const maxWeight = Math.max(...weightData.map(d => d.weight));
+      const range = maxWeight - minWeight || 1;
+
+      return weightData.map((entry, idx) => {
+        const normalizedHeight = ((entry.weight - minWeight) / range) * 100;
+        return `
+          <div class="bar-wrapper">
+            <div class="bar" style="height: ${normalizedHeight}%;">
+              <div class="bar-value">${entry.weight.toFixed(1)}</div>
+            </div>
+            <div class="bar-label">${entry.date.split(' ')[0]}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function getRecentEntries() {
+      const recent = [...weightData].reverse().slice(0, 5);
+      return recent.map(entry => `
+        <div class="weight-entry">
+          <div class="weight-date">${entry.date}</div>
+          <div class="weight-value">${entry.weight.toFixed(1)} kg</div>
+        </div>
+      `).join('');
+    }
+
+    // Initialize
+    renderStatsPage();
+  </script>
+</body>
+</html>

@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Habit Tracker</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: #0a0a0a;
+      color: #f5f1ed;
+    }
+    .container {
+      min-height: 100vh;
+      background: #0a0a0a;
+    }
+    button {
+      font-family: inherit;
+    }
+    input {
+      font-family: inherit;
+      background: #141411;
+      border: 1px solid #2a2925;
+      color: #f5f1ed;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script>
+    let state = {
+      activeTab: 'daily',
+      selectedDate: new Date(2026, 7, 12), // August 12, 2026 (Wednesday)
+      completedHabits: {
+        'morning-skincare': true,
+        'wakeup-time': true,
+        'turmeric-drink': true,
+        'evening-skincare': true,
+        'evening-vitamins': false,
+        'daily-weight': 65.2,
+        'prayer': true,
+        'horseback-riding': false,
+        'litter-change': true,
+        'water-fountain': false,
+        'cat-grooming': true,
+        'pill-dispenser': false,
+        'weight-loss-med': true,
+        'house-cleaning': false,
+        'hair-mask': true,
+      },
+      prayersCompleted: {
+        fajr: true,
+        dhuhr: true,
+        asr: false,
+        maghrib: false,
+        isha: false,
+      },
+      visibleHabits: [
+        'morning-skincare', 'wakeup-time', 'turmeric-drink',
+        'evening-skincare', 'evening-vitamins', 'daily-weight',
+        'prayer', 'horseback-riding', 'litter-change', 'water-fountain',
+        'cat-grooming', 'pill-dispenser', 'weight-loss-med',
+        'house-cleaning', 'hair-mask'
+      ]
+    };
+
+    const habitsMetadata = {
+      'morning-skincare': { label: 'Morning skincare', type: 'yes/no', freq: 'daily' },
+      'wakeup-time': { label: 'Wake-up time', type: 'number', freq: 'daily' },
+      'turmeric-drink': { label: 'Turmeric drink', type: 'yes/no', freq: 'daily' },
+      'evening-skincare': { label: 'Evening skincare', type: 'yes/no', freq: 'daily' },
+      'evening-vitamins': { label: 'Evening vitamins', type: 'yes/no', freq: 'daily' },
+      'daily-weight': { label: 'Daily weight', type: 'number', freq: 'daily' },
+      'prayer': { label: 'Prayers', type: 'yes/no', freq: 'daily' },
+      'horseback-riding': { label: 'Horseback riding', type: 'yes/no', freq: 'weekly', days: [0, 2, 4] },
+      'litter-change': { label: 'Cat litter', type: 'yes/no', freq: 'weekly', days: [6] },
+      'water-fountain': { label: 'Water fountain', type: 'yes/no', freq: 'weekly', days: [6] },
+      'cat-grooming': { label: 'Cat grooming', type: 'yes/no', freq: 'weekly', days: [6] },
+      'pill-dispenser': { label: 'Pill dispenser refill', type: 'yes/no', freq: 'weekly', days: [6] },
+      'weight-loss-med': { label: 'Weight loss medication', type: 'yes/no', freq: 'weekly' },
+      'house-cleaning': { label: 'House cleaning', type: 'yes/no', freq: 'weekly' },
+      'hair-mask': { label: 'Hair mask', type: 'yes/no', freq: 'weekly' },
+    };
+
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+    function getWeeklyTasksForDay() {
+      const dayOfWeek = state.selectedDate.getDay();
+      const weeklyTasks = [];
+      
+      // Horseback riding: Sunday (0), Tuesday (2), Thursday (4)
+      if ([0, 2, 4].includes(dayOfWeek)) weeklyTasks.push('horseback-riding');
+      
+      // Cat activities: Saturday (6)
+      if (dayOfWeek === 6) {
+        weeklyTasks.push('litter-change', 'water-fountain', 'cat-grooming', 'pill-dispenser');
+      }
+      
+      return weeklyTasks;
+    }
+
+    function setHabit(habitId, value) {
+      // For yes/no habits, toggle between true/false
+      if (typeof value === 'boolean') {
+        state.completedHabits[habitId] = value;
+      } else {
+        // For text inputs (wake-up time), just store the string value
+        state.completedHabits[habitId] = value || null;
+      }
+      render();
+    }
+
+    function setWeight(value) {
+      state.completedHabits['daily-weight'] = value === '' ? null : parseFloat(value);
+      render();
+    }
+
+    function togglePrayer(prayerId) {
+      state.prayersCompleted[prayerId] = !state.prayersCompleted[prayerId];
+      render();
+    }
+
+    function setActiveTab(tab) {
+      state.activeTab = tab;
+      render();
+    }
+
+    function changeDate(days) {
+      const newDate = new Date(state.selectedDate);
+      newDate.setDate(newDate.getDate() + days);
+      state.selectedDate = newDate;
+      render();
+    }
+
+    function changeMonth(months) {
+      const newDate = new Date(state.selectedDate);
+      newDate.setMonth(newDate.getMonth() + months);
+      state.selectedDate = newDate;
+      render();
+    }
+
+    function goToSettings() {
+      window.location.href = 'habit_tracker_manage_habits_mockup.html';
+    }
+
+    function goToProfile() {
+      window.location.href = 'habit_tracker_profile.html';
+    }
+
+    function renderHabitItem(habitId) {
+      const habit = habitsMetadata[habitId];
+      const value = state.completedHabits[habitId];
+
+      if (habit.type === 'number') {
+        let suffix = '';
+        let placeholder = '';
+        let step = '0.1';
+        if (habitId === 'daily-weight') {
+          suffix = 'kg';
+          placeholder = '0.0';
+        } else if (habitId === 'wakeup-time') {
+          suffix = 'am';
+          placeholder = '6:30';
+          step = 'any';
+        }
+
+        return `
+          <div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: #141411; border-radius: 4px; border: 1px solid #2a2925;">
+            <div style="flex: 1;">
+              <p style="color: #f5f1ed; font-size: 12px; font-weight: 400;">${habit.label}</p>
+            </div>
+            <input type="text" value="${value || ''}" onchange="setHabit('${habitId}', this.value)" placeholder="${placeholder}" style="width: 60px; text-align: right;" />
+            <span style="color: #8a8985; font-size: 11px;">${suffix}</span>
+          </div>
+        `;
+      }
+
+      return `
+        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #141411; border-radius: 4px; border: 1px solid #2a2925;">
+          <div style="flex: 1;">
+            <p style="color: #f5f1ed; font-size: 12px; font-weight: 400;">${habit.label}</p>
+          </div>
+          <button onclick="setHabit('${habitId}', false)" style="width: 28px; height: 28px; border-radius: 4px; border: 1px solid #2a2925; background: ${!value ? '#2a2925' : '#141411'}; color: #8a8985; cursor: pointer; font-size: 14px;">✕</button>
+          <button onclick="setHabit('${habitId}', true)" style="width: 28px; height: 28px; border-radius: 4px; border: 1px solid #2a2925; background: ${value ? '#d97757' : '#141411'}; color: ${value ? '#0a0a0a' : '#8a8985'}; cursor: pointer; font-weight: 600;">✓</button>
+        </div>
+      `;
+    }
+
+    function renderDailyView() {
+      const dayOfWeek = state.selectedDate.getDay();
+      
+      const sections = {
+        'Morning': ['morning-skincare', 'wakeup-time', 'daily-weight', 'turmeric-drink'],
+        'Evening': ['evening-skincare', 'evening-vitamins'],
+        'Prayer': ['prayer'],
+      };
+
+      // Add horseback riding to evening if it's Sun/Tue/Thu
+      if ([0, 2, 4].includes(dayOfWeek)) {
+        sections['Evening'].push('horseback-riding');
+      }
+
+      let html = `<div style="display: flex; flex-direction: column; gap: 12px;">`;
+
+      Object.entries(sections).forEach(([section, habits]) => {
+        const visibleInSection = habits.filter(h => state.visibleHabits.includes(h) || h === 'prayer' || h === 'horseback-riding');
+        if (visibleInSection.length === 0) return;
+
+        html += `
+          <div>
+            <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 6px; text-transform: uppercase;">${section}</p>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+        `;
+
+        visibleInSection.forEach(habitId => {
+          if (habitId === 'prayer') {
+            // Prayer is read-only, just shows status
+            const allPrayersComplete = Object.values(state.prayersCompleted).every(v => v);
+            html += `
+              <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #141411; border-radius: 4px; border: 1px solid #2a2925;">
+                <div style="flex: 1;">
+                  <p style="color: #f5f1ed; font-size: 12px; font-weight: 400;">Prayers</p>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <div style="width: 6px; height: 6px; border-radius: 50%; background: ${allPrayersComplete ? '#d97757' : '#444441'};"></div>
+                  <span style="color: #8a8985; font-size: 11px;">${allPrayersComplete ? 'Complete' : 'Incomplete'}</span>
+                </div>
+              </div>
+            `;
+          } else {
+            html += renderHabitItem(habitId);
+          }
+        });
+
+        html += `</div></div>`;
+      });
+
+      // Add weekly tasks (cat activities) at bottom on Saturday only
+      if (dayOfWeek === 6) {
+        html += `
+          <div>
+            <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 6px; text-transform: uppercase;">Weekly</p>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+        `;
+        ['litter-change', 'water-fountain', 'cat-grooming', 'pill-dispenser'].forEach(habitId => {
+          html += renderHabitItem(habitId);
+        });
+        html += `</div></div>`;
+      }
+
+      html += `</div>`;
+      return html;
+    }
+
+    function renderPrayerView() {
+      const prayers = [
+        { id: 'fajr', label: 'Fajr' },
+        { id: 'dhuhr', label: 'Dhuhr' },
+        { id: 'asr', label: 'Asr' },
+        { id: 'maghrib', label: 'Maghrib' },
+        { id: 'isha', label: 'Isha' },
+      ];
+
+      const allComplete = Object.values(state.prayersCompleted).every(v => v);
+
+      let html = `
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div style="margin-bottom: 4px;">
+            <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 6px;">Prayers</p>
+            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #141411; border-radius: 4px; border: 1px solid #2a2925;">
+              <div style="width: 6px; height: 6px; border-radius: 50%; background: ${allComplete ? '#d97757' : '#444441'};"></div>
+              <p style="color: #f5f1ed; font-size: 12px; font-weight: 400;">${allComplete ? 'Complete' : 'Incomplete'}</p>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+      `;
+
+      prayers.forEach(prayer => {
+        const isCompleted = state.prayersCompleted[prayer.id];
+        html += `
+          <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #141411; border-radius: 4px; border: 1px solid #2a2925;">
+            <div style="flex: 1;">
+              <p style="color: #f5f1ed; font-size: 12px; font-weight: 400;">${prayer.label}</p>
+            </div>
+            <button onclick="togglePrayer('${prayer.id}')" style="width: 28px; height: 28px; border-radius: 4px; border: 1px solid #2a2925; background: ${isCompleted ? '#d97757' : '#141411'}; color: ${isCompleted ? '#0a0a0a' : '#8a8985'}; cursor: pointer; font-weight: 600;">✓</button>
+          </div>
+        `;
+      });
+
+      html += `</div></div>`;
+      return html;
+    }
+
+    function renderWeeklyView() {
+      // Get start of week (Sunday) for the selected date
+      const selected = new Date(state.selectedDate);
+      const dayOfWeek = selected.getDay();
+      const startOfWeek = new Date(selected);
+      startOfWeek.setDate(selected.getDate() - dayOfWeek);
+
+      const allHabits = state.visibleHabits;
+      const mockData = {};
+      allHabits.forEach(h => {
+        mockData[h] = Array.from({length: 7}, () => Math.random() > 0.4 ? 1 : 0);
+      });
+
+      let html = `
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div>
+            <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 6px;">Week of ${monthNames[startOfWeek.getMonth()]} ${startOfWeek.getDate()}</p>
+          </div>
+          <div style="background: #141411; border-radius: 6px; border: 1px solid #2a2925; padding: 8px; overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
+              <thead>
+                <tr>
+                  <th style="width: 20px; padding-right: 4px; text-align: left;"></th>
+      `;
+
+      allHabits.forEach(habitId => {
+        const label = habitsMetadata[habitId].label;
+        html += `<th style="padding: 4px 2px; text-align: left; width: 24px; height: 100px;"><p style="color: #f5f1ed; font-weight: 400; font-size: 9px; writing-mode: vertical-rl; transform: rotate(180deg); display: flex; align-items: flex-end; justify-content: flex-start; height: 100%; white-space: nowrap;">${label}</p></th>`;
+      });
+
+      html += `</tr></thead><tbody>`;
+
+      const dayShortNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      
+      for (let dayIdx = 0; dayIdx < 7; dayIdx++) {
+        const dayDate = new Date(startOfWeek);
+        dayDate.setDate(startOfWeek.getDate() + dayIdx);
+        const dayLabel = dayShortNames[dayDate.getDay()];
+        
+        html += `<tr style="border-top: 1px solid #2a2925;">
+          <td style="padding: 3px 4px; text-align: right; color: #7a7570; font-size: 9px; font-weight: 600;">${dayLabel}</td>`;
+
+        allHabits.forEach(habitId => {
+          const completed = mockData[habitId][dayIdx];
+          const bg = completed ? '#d97757' : '#2a2925';
+          html += `<td style="padding: 3px 2px; text-align: center;"><div style="width: 10px; height: 10px; border-radius: 2px; background: ${bg}; opacity: ${completed ? 1 : 0.4}; margin: 0 auto;"></div></td>`;
+        });
+
+        html += `</tr>`;
+      }
+
+      html += `</tbody></table></div>`;
+      html += `</div>`;
+      return html;
+    }
+
+    function renderMonthlyView() {
+      const allHabits = state.visibleHabits;
+      const mockData = {};
+      allHabits.forEach(h => {
+        mockData[h] = Array.from({length: 31}, () => Math.random() > 0.4 ? 1 : 0);
+      });
+
+      let html = `
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div>
+            <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 6px;">August 2026</p>
+          </div>
+          <div style="background: #141411; border-radius: 6px; border: 1px solid #2a2925; padding: 8px; overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
+              <thead>
+                <tr>
+                  <th style="width: 20px; padding-right: 4px; text-align: left;"></th>
+      `;
+
+      allHabits.forEach(habitId => {
+        const label = habitsMetadata[habitId].label;
+        html += `<th style="padding: 4px 2px; text-align: left; width: 24px; height: 100px;"><p style="color: #f5f1ed; font-weight: 400; font-size: 9px; writing-mode: vertical-rl; transform: rotate(180deg); display: flex; align-items: flex-end; justify-content: flex-start; height: 100%; white-space: nowrap;">${label}</p></th>`;
+      });
+
+      html += `</tr></thead><tbody>`;
+
+      for (let dayIdx = 0; dayIdx < 31; dayIdx++) {
+        html += `<tr style="border-top: 1px solid #2a2925;">
+          <td style="padding: 3px 4px; text-align: right; color: #7a7570; font-size: 9px; font-weight: 600;">${dayIdx + 1}</td>`;
+
+        allHabits.forEach(habitId => {
+          const completed = mockData[habitId][dayIdx];
+          const bg = completed ? '#d97757' : '#2a2925';
+          html += `<td style="padding: 3px 2px; text-align: center;"><div style="width: 10px; height: 10px; border-radius: 2px; background: ${bg}; opacity: ${completed ? 1 : 0.4}; margin: 0 auto;"></div></td>`;
+        });
+
+        html += `</tr>`;
+      }
+
+      html += `</tbody></table></div>`;
+      html += `</div>`;
+      return html;
+    }
+
+    function renderStatsView() {
+      // Mock weight data for the entire month (30 days)
+      const monthData = [
+        { date: '1', weight: 68.5 },
+        { date: '2', weight: 68.3 },
+        { date: '3', weight: 68.1 },
+        { date: '4', weight: 68.2 },
+        { date: '5', weight: 67.9 },
+        { date: '6', weight: 67.8 },
+        { date: '7', weight: 67.6 },
+        { date: '8', weight: 67.5 },
+        { date: '9', weight: 67.4 },
+        { date: '10', weight: 67.3 },
+        { date: '11', weight: 67.2 },
+        { date: '12', weight: 67.1 },
+        { date: '13', weight: 66.9 },
+        { date: '14', weight: 66.8 },
+        { date: '15', weight: 66.7 },
+        { date: '16', weight: 66.6 },
+        { date: '17', weight: 66.5 },
+        { date: '18', weight: 66.4 },
+        { date: '19', weight: 66.2 },
+        { date: '20', weight: 66.1 },
+        { date: '21', weight: 66.0 },
+        { date: '22', weight: 65.9 },
+        { date: '23', weight: 65.8 },
+        { date: '24', weight: 65.7 },
+        { date: '25', weight: 65.6 },
+        { date: '26', weight: 65.5 },
+        { date: '27', weight: 65.4 },
+        { date: '28', weight: 65.3 },
+        { date: '29', weight: 65.2 },
+        { date: '30', weight: 65.2 },
+      ];
+
+      const startWeight = 68.5;
+      const currentWeight = 65.2;
+      const goalWeight = 63.0;
+      const weightLost = startWeight - currentWeight;
+      const weightToGoal = currentWeight - goalWeight;
+
+      // Calculate line chart SVG with axes
+      const chartWidth = 420;
+      const chartHeight = 200;
+      const paddingLeft = 40;
+      const paddingRight = 20;
+      const paddingTop = 20;
+      const paddingBottom = 40;
+      const innerWidth = chartWidth - paddingLeft - paddingRight;
+      const innerHeight = chartHeight - paddingTop - paddingBottom;
+
+      const minWeight = Math.min(...monthData.map(d => d.weight));
+      const maxWeight = Math.max(...monthData.map(d => d.weight));
+      const range = maxWeight - minWeight || 1;
+
+      // Generate SVG points for line
+      let points = '';
+      monthData.forEach((entry, idx) => {
+        const x = paddingLeft + (idx / (monthData.length - 1)) * innerWidth;
+        const y = paddingTop + innerHeight - ((entry.weight - minWeight) / range) * innerHeight;
+        points += `${x},${y} `;
+      });
+
+      // Generate Y-axis labels
+      const yAxisSteps = 5;
+      let yAxisLines = '';
+      let yAxisLabels = '';
+      for (let i = 0; i <= yAxisSteps; i++) {
+        const value = minWeight + (range / yAxisSteps) * i;
+        const y = paddingTop + innerHeight - (i / yAxisSteps) * innerHeight;
+        yAxisLines += `<line x1="${paddingLeft}" y1="${y}" x2="${chartWidth - paddingRight}" y2="${y}" stroke="#2a2925" stroke-width="0.5" opacity="0.3"/>`;
+        yAxisLabels += `<text x="${paddingLeft - 8}" y="${y + 3}" font-size="8" fill="#8a8985" text-anchor="end">${value.toFixed(1)}</text>`;
+      }
+
+      // Generate X-axis labels (show every 5 days)
+      let xAxisLabels = '';
+      for (let i = 0; i < monthData.length; i += 5) {
+        const x = paddingLeft + (i / (monthData.length - 1)) * innerWidth;
+        xAxisLabels += `<text x="${x}" y="${chartHeight - 10}" font-size="8" fill="#8a8985" text-anchor="middle">${monthData[i].date}</text>`;
+      }
+
+      const lineChart = `
+        <svg viewBox="0 0 ${chartWidth} ${chartHeight}" style="width: 100%; height: 240px;">
+          <!-- Y-axis grid lines -->
+          ${yAxisLines}
+          
+          <!-- Y-axis -->
+          <line x1="${paddingLeft}" y1="${paddingTop}" x2="${paddingLeft}" y2="${paddingTop + innerHeight}" stroke="#8a8985" stroke-width="1"/>
+          
+          <!-- X-axis -->
+          <line x1="${paddingLeft}" y1="${paddingTop + innerHeight}" x2="${chartWidth - paddingRight}" y2="${paddingTop + innerHeight}" stroke="#8a8985" stroke-width="1"/>
+          
+          <!-- Y-axis labels (weight in kg) -->
+          ${yAxisLabels}
+          
+          <!-- X-axis labels (days) -->
+          ${xAxisLabels}
+          
+          <!-- Y-axis label -->
+          <text x="12" y="30" font-size="9" fill="#8a8985" font-weight="600">kg</text>
+          
+          <!-- Trend line -->
+          <polyline points="${points}" fill="none" stroke="#d97757" stroke-width="2" opacity="0.9"/>
+          
+          <!-- Data points -->
+          ${monthData.map((entry, idx) => {
+            const x = paddingLeft + (idx / (monthData.length - 1)) * innerWidth;
+            const y = paddingTop + innerHeight - ((entry.weight - minWeight) / range) * innerHeight;
+            return `<circle cx="${x}" cy="${y}" r="1.5" fill="#d97757" opacity="0.8"/>`;
+          }).join('')}
+        </svg>
+      `;
+
+      let html = `
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+          <!-- Top Row: Weight Loss & Current Weight Side by Side -->
+          <div style="display: flex; gap: 12px;">
+            <!-- Weight Loss Progress -->
+            <div style="flex: 1; background: #141411; border: 1px solid #2a2925; border-radius: 6px; padding: 16px;">
+              <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 8px;">Weight Lost</p>
+              <p style="color: #f5f1ed; font-size: 24px; font-weight: 400; margin-bottom: 4px;">${weightLost.toFixed(1)} kg</p>
+              <div style="color: #8a8985; font-size: 11px;">
+                <div>Started: ${startWeight.toFixed(1)} kg</div>
+                <div style="color: #d97757; margin-top: 4px;">↓ ${((weightLost / startWeight) * 100).toFixed(1)}%</div>
+              </div>
+            </div>
+
+            <!-- Current Weight -->
+            <div style="flex: 1; background: #141411; border: 1px solid #2a2925; border-radius: 6px; padding: 16px;">
+              <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 8px;">Current Weight</p>
+              <p style="color: #f5f1ed; font-size: 24px; font-weight: 400; margin-bottom: 4px;">${currentWeight.toFixed(1)} kg</p>
+              <div style="color: #8a8985; font-size: 11px;">
+                <div>Goal: ${goalWeight.toFixed(1)} kg</div>
+                <div style="margin-top: 4px;">${Math.abs(weightToGoal).toFixed(1)} kg to go</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Insight -->
+          <div style="background: rgba(217, 119, 87, 0.1); border: 1px solid rgba(217, 119, 87, 0.2); border-radius: 4px; padding: 12px; font-size: 11px; color: #d97757;">
+            💪 Great progress! You've lost ${weightLost.toFixed(1)} kg this month. Keep up the consistent habit tracking!
+          </div>
+
+          <!-- Weight Trend Line Chart -->
+          <div style="background: #141411; border: 1px solid #2a2925; border-radius: 6px; padding: 16px;">
+            <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 16px;">Weight Trend (${monthNames[state.selectedDate.getMonth()]} ${state.selectedDate.getFullYear()})</p>
+            ${lineChart}
+          </div>
+        </div>
+      `;
+
+      return html;
+    }
+
+    function render() {
+      const tabs = ['daily', 'prayer', 'weekly', 'monthly', 'stats'];
+      const tabLabels = { daily: 'Today', prayer: 'Prayers', weekly: 'Week', monthly: 'Month', stats: 'Stats' };
+
+      let tabNav = '';
+      tabs.forEach((tab, idx) => {
+        const isActive = state.activeTab === tab;
+        const borderColor = isActive ? ' #d97757' : ' transparent';
+        const color = isActive ? '#f5f1ed' : '#7a7570';
+        
+        // Add large gap before stats tab to push it right
+        const marginStyle = tab === 'stats' ? 'margin-left: auto;' : '';
+        
+        tabNav += `
+          <button onclick="setActiveTab('${tab}')" style="padding: 6px 0; font-size: 11px; font-weight: 400; border-bottom: 2px solid${borderColor}; background: none; border: none; cursor: pointer; color: ${color}; transition: color 0.2s; ${marginStyle}">
+            ${tabLabels[tab]}
+          </button>
+        `;
+      });
+
+      // Date formatting
+      let dateNavHtml = '';
+      if (state.activeTab === 'stats') {
+        // Show month navigation for stats view too
+        const monthDisplay = monthNames[state.selectedDate.getMonth()] + ' ' + state.selectedDate.getFullYear();
+        dateNavHtml = `
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid #2a2925;">
+            <button onclick="changeMonth(-1)" style="background: none; border: none; color: #8a8985; cursor: pointer; font-size: 18px; padding: 4px 8px; display: flex; align-items: center;">‹</button>
+            <div style="text-align: center;">
+              <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 2px;">
+                ${monthDisplay}
+              </p>
+            </div>
+            <button onclick="changeMonth(1)" style="background: none; border: none; color: #8a8985; cursor: pointer; font-size: 18px; padding: 4px 8px; display: flex; align-items: center;">›</button>
+          </div>
+        `;
+      } else if (state.activeTab === 'monthly') {
+        // Month navigation for monthly view
+        const monthDisplay = monthNames[state.selectedDate.getMonth()] + ' ' + state.selectedDate.getFullYear();
+        dateNavHtml = `
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid #2a2925;">
+            <button onclick="changeMonth(-1)" style="background: none; border: none; color: #8a8985; cursor: pointer; font-size: 18px; padding: 4px 8px; display: flex; align-items: center;">‹</button>
+            <div style="text-align: center;">
+              <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 2px;">
+                ${monthDisplay}
+              </p>
+            </div>
+            <button onclick="changeMonth(1)" style="background: none; border: none; color: #8a8985; cursor: pointer; font-size: 18px; padding: 4px 8px; display: flex; align-items: center;">›</button>
+          </div>
+        `;
+      } else if (state.activeTab === 'weekly') {
+        // Week navigation
+        const dayOfWeek = state.selectedDate.getDay();
+        const startOfWeek = new Date(state.selectedDate);
+        startOfWeek.setDate(state.selectedDate.getDate() - dayOfWeek);
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6);
+        const weekDisplay = monthNames[startOfWeek.getMonth()] + ' ' + startOfWeek.getDate() + ' - ' + monthNames[endOfWeek.getMonth()] + ' ' + endOfWeek.getDate();
+        dateNavHtml = `
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid #2a2925;">
+            <button onclick="changeDate(-7)" style="background: none; border: none; color: #8a8985; cursor: pointer; font-size: 18px; padding: 4px 8px; display: flex; align-items: center;">‹</button>
+            <div style="text-align: center;">
+              <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 2px;">
+                ${weekDisplay}
+              </p>
+            </div>
+            <button onclick="changeDate(7)" style="background: none; border: none; color: #8a8985; cursor: pointer; font-size: 18px; padding: 4px 8px; display: flex; align-items: center;">›</button>
+          </div>
+        `;
+      } else {
+        // Day navigation for daily/prayer views
+        const isToday = new Date().toDateString() === state.selectedDate.toDateString();
+        dateNavHtml = `
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid #2a2925;">
+            <button onclick="changeDate(-1)" style="background: none; border: none; color: #8a8985; cursor: pointer; font-size: 18px; padding: 4px 8px; display: flex; align-items: center;">‹</button>
+            <div style="text-align: center;">
+              <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 2px;">
+                ${isToday ? 'Today' : dayNames[state.selectedDate.getDay()] + ', ' + monthNames[state.selectedDate.getMonth()] + ' ' + state.selectedDate.getDate()}
+              </p>
+            </div>
+            <button onclick="changeDate(1)" style="background: none; border: none; color: #8a8985; cursor: pointer; font-size: 18px; padding: 4px 8px; display: flex; align-items: center;">›</button>
+          </div>
+        `;
+      }
+
+      // Get weekly tasks for this day
+      const weeklyTasks = getWeeklyTasksForDay();
+      let weeklyTasksHtml = '';
+
+      let content = '';
+      if (state.activeTab === 'daily') content = renderDailyView();
+      else if (state.activeTab === 'prayer') content = renderPrayerView();
+      else if (state.activeTab === 'weekly') content = renderWeeklyView();
+      else if (state.activeTab === 'monthly') content = renderMonthlyView();
+      else if (state.activeTab === 'stats') content = renderStatsView();
+
+      const html = `
+        <div class="container">
+          <div style="position: sticky; top: 0; background: #0a0a0a; border-bottom: 1px solid #2a2925; z-index: 10;">
+            <!-- Header with Settings Button -->
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid #2a2925;">
+              <button onclick="goToProfile()" style="background: none; border: none; color: #8a8985; cursor: pointer; font-size: 16px; padding: 4px 8px;">👤</button>
+              <h1 style="font-size: 14px; font-weight: 400; margin: 0;">Discipline</h1>
+              <button onclick="goToSettings()" style="background: none; border: none; color: #8a8985; cursor: pointer; font-size: 16px; padding: 4px 8px;">⚙</button>
+            </div>
+
+            <!-- Date Navigation -->
+            ${dateNavHtml}
+
+            <!-- Tab Navigation -->
+            <div style="display: flex; gap: 14px; border-bottom: 1px solid #2a2925; padding: 0 14px; align-items: center;">
+              ${tabNav}
+            </div>
+          </div>
+
+          <div style="padding: 12px 14px; max-width: 480px; margin: 0 auto;">
+            ${content}
+          </div>
+        </div>
+      `;
+
+      document.getElementById('root').innerHTML = html;
+    }
+
+    render();
+  </script>
+</body>
+</html>

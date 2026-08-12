@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Habit Tracker - Manage Habits</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: #0a0a0a;
+      color: #f5f1ed;
+    }
+    .container {
+      min-height: 100vh;
+      background: #0a0a0a;
+    }
+    .header {
+      position: sticky;
+      top: 0;
+      background: #0a0a0a;
+      border-bottom: 1px solid #2a2925;
+      padding: 12px 14px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .header h1 {
+      font-size: 14px;
+      font-weight: 400;
+      margin: 0;
+    }
+    .content {
+      padding: 12px 14px;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+    .section {
+      margin-bottom: 20px;
+    }
+    .section-title {
+      color: #8a8985;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .section-count {
+      background: #141411;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 9px;
+      color: #7a7570;
+    }
+    .habit-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+      background: #141411;
+      border: 1px solid #2a2925;
+      border-radius: 4px;
+      margin-bottom: 6px;
+      cursor: grab;
+      transition: all 0.2s;
+    }
+    .habit-item:active {
+      cursor: grabbing;
+      background: #1a1714;
+      opacity: 0.8;
+    }
+    .drag-handle {
+      color: #7a7570;
+      font-size: 14px;
+      cursor: grab;
+      flex-shrink: 0;
+      padding: 4px;
+    }
+    .drag-handle:active {
+      cursor: grabbing;
+    }
+    .habit-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .habit-name {
+      color: #f5f1ed;
+      font-size: 12px;
+      font-weight: 400;
+      margin-bottom: 4px;
+    }
+    .habit-meta {
+      display: flex;
+      gap: 8px;
+      font-size: 9px;
+    }
+    .badge {
+      background: #2a2925;
+      color: #8a8985;
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+    .badge.type-yesno {
+      background: #2a2925;
+    }
+    .badge.type-number {
+      background: #2a2925;
+    }
+    .badge.freq-daily {
+      background: rgba(217, 119, 87, 0.15);
+      color: #d97757;
+    }
+    .badge.freq-weekly {
+      background: rgba(138, 137, 133, 0.15);
+      color: #8a8985;
+    }
+    .badge.freq-monthly {
+      background: rgba(138, 137, 133, 0.15);
+      color: #8a8985;
+    }
+    .badge.freq-quarterly {
+      background: rgba(138, 137, 133, 0.15);
+      color: #8a8985;
+    }
+    .habit-actions {
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .action-button {
+      width: 28px;
+      height: 28px;
+      background: #2a2925;
+      border: 1px solid #3a3530;
+      border-radius: 4px;
+      color: #8a8985;
+      cursor: pointer;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    .action-button:hover {
+      background: #3a3530;
+      color: #f5f1ed;
+    }
+    .action-button.delete:hover {
+      background: #d97757;
+      border-color: #d97757;
+      color: #0a0a0a;
+    }
+    .archived-toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      background: #141411;
+      border: 1px solid #2a2925;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-bottom: 12px;
+    }
+    .archived-toggle input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+      accent-color: #d97757;
+    }
+    .archived-toggle label {
+      flex: 1;
+      cursor: pointer;
+      color: #8a8985;
+      font-size: 12px;
+      margin: 0;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 20px 10px;
+      color: #7a7570;
+      font-size: 12px;
+    }
+    .add-button {
+      background: #d97757;
+      color: #0a0a0a;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 12px;
+      transition: opacity 0.2s;
+    }
+    .add-button:hover {
+      opacity: 0.9;
+    }
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 20;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.visible {
+      display: flex;
+    }
+    .modal {
+      background: #141411;
+      border: 1px solid #2a2925;
+      border-radius: 6px;
+      padding: 16px;
+      max-width: 400px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    .modal h3 {
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+    }
+    .modal-actions button {
+      flex: 1;
+      padding: 8px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .modal-actions .cancel {
+      background: #2a2925;
+      color: #8a8985;
+    }
+    .modal-actions .confirm {
+      background: #d97757;
+      color: #0a0a0a;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
+        <button onclick="goBack()" style="background: none; border: none; color: #8a8985; cursor: pointer; font-size: 18px; padding: 4px 8px;">←</button>
+        <h1>Manage Habits</h1>
+      </div>
+      <button class="add-button" onclick="openAddHabit()">+ Add</button>
+    </div>
+
+    <!-- Content -->
+    <div class="content">
+      <!-- Show Archived Toggle -->
+      <div class="archived-toggle" id="archivedToggle">
+        <input type="checkbox" id="showArchived" onchange="toggleArchived()" />
+        <label for="showArchived">Show archived habits</label>
+      </div>
+
+      <!-- DAILY HABITS -->
+      <div class="section" id="dailySection">
+        <div class="section-title">
+          Daily
+          <span class="section-count" id="dailyCount">0</span>
+        </div>
+        <div id="dailyList"></div>
+      </div>
+
+      <!-- WEEKLY HABITS -->
+      <div class="section" id="weeklySection">
+        <div class="section-title">
+          Weekly
+          <span class="section-count" id="weeklyCount">0</span>
+        </div>
+        <div id="weeklyList"></div>
+      </div>
+
+      <!-- MONTHLY HABITS -->
+      <div class="section" id="monthlySection">
+        <div class="section-title">
+          Monthly
+          <span class="section-count" id="monthlyCount">0</span>
+        </div>
+        <div id="monthlyList"></div>
+      </div>
+
+      <!-- QUARTERLY HABITS -->
+      <div class="section" id="quarterlySection">
+        <div class="section-title">
+          Quarterly
+          <span class="section-count" id="quarterlyCount">0</span>
+        </div>
+        <div id="quarterlyList"></div>
+      </div>
+
+      <!-- ARCHIVED HABITS (Hidden by default) -->
+      <div class="section" id="archivedSection" style="display: none;">
+        <div class="section-title">
+          Archived
+          <span class="section-count" id="archivedCount">0</span>
+        </div>
+        <div id="archivedList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div class="modal-overlay" id="deleteModal">
+    <div class="modal">
+      <h3>Delete Habit?</h3>
+      <p style="color: #8a8985; font-size: 12px; margin-bottom: 16px;" id="deleteMsg">This action cannot be undone.</p>
+      <div class="modal-actions">
+        <button class="cancel" onclick="closeDeleteModal()">Cancel</button>
+        <button class="confirm" style="background: #8a4a3a;" onclick="confirmDelete()">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let showArchivedHabits = false;
+    let deletingId = null;
+    let draggedItem = null;
+
+    const habits = [
+      // Daily
+      { id: 'morning-skincare', name: 'Morning skincare', freq: 'daily', type: 'yes/no', archived: false },
+      { id: 'wakeup-time', name: 'Wake-up time', freq: 'daily', type: 'number', unit: 'am', archived: false },
+      { id: 'turmeric-drink', name: 'Turmeric drink', freq: 'daily', type: 'yes/no', archived: false },
+      { id: 'evening-skincare', name: 'Evening skincare', freq: 'daily', type: 'yes/no', archived: false },
+      { id: 'evening-vitamins', name: 'Evening vitamins', freq: 'daily', type: 'yes/no', archived: false },
+      { id: 'daily-weight', name: 'Daily weight', freq: 'daily', type: 'number', unit: 'kg', archived: false },
+      { id: 'prayer', name: 'Prayers', freq: 'daily', type: 'yes/no', archived: false },
+      
+      // Weekly
+      { id: 'horseback-riding', name: 'Horseback riding', freq: 'weekly', type: 'yes/no', days: [0, 2, 4], archived: false },
+      { id: 'litter-change', name: 'Cat litter', freq: 'weekly', type: 'yes/no', days: [6], archived: false },
+      { id: 'water-fountain', name: 'Water fountain', freq: 'weekly', type: 'yes/no', days: [6], archived: false },
+      { id: 'cat-grooming', name: 'Cat grooming', freq: 'weekly', type: 'yes/no', days: [6], archived: false },
+      { id: 'pill-dispenser', name: 'Pill dispenser', freq: 'weekly', type: 'yes/no', days: [6], archived: false },
+      { id: 'weight-loss-med', name: 'Weight loss med', freq: 'weekly', type: 'yes/no', archived: false },
+      { id: 'house-cleaning', name: 'House cleaning', freq: 'weekly', type: 'yes/no', archived: false },
+      { id: 'hair-mask', name: 'Hair mask', freq: 'weekly', type: 'yes/no', archived: false },
+      
+      // Monthly
+      { id: 'massage', name: 'Massage', freq: 'monthly', type: 'yes/no', day: 15, archived: false },
+      { id: 'manicure', name: 'Manicure & pedicure', freq: 'monthly', type: 'yes/no', day: 1, archived: false },
+      { id: 'bath', name: 'Moroccan bath', freq: 'monthly', type: 'yes/no', day: 20, archived: false },
+      
+      // Quarterly
+      { id: 'cat-meds', name: 'Cat medication & vaccinations', freq: 'quarterly', type: 'yes/no', startMonth: 0, archived: false },
+      
+      // Archived (example)
+      { id: 'old-habit', name: 'Old habit (archived)', freq: 'daily', type: 'yes/no', archived: true },
+    ];
+
+    function getFreqLabel(freq, habit) {
+      if (freq === 'weekly' && habit.days) {
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        return `Weekly: ${habit.days.map(d => dayNames[d]).join(', ')}`;
+      }
+      if (freq === 'monthly' && habit.day) {
+        return `Monthly (${habit.day}${getOrdinal(habit.day)})`;
+      }
+      return freq.charAt(0).toUpperCase() + freq.slice(1);
+    }
+
+    function getOrdinal(num) {
+      if (num % 10 === 1 && num !== 11) return 'st';
+      if (num % 10 === 2 && num !== 12) return 'nd';
+      if (num % 10 === 3 && num !== 13) return 'rd';
+      return 'th';
+    }
+
+    function renderHabit(habit) {
+      const freqLabel = getFreqLabel(habit.freq, habit);
+      return `
+        <div class="habit-item" draggable="true" data-id="${habit.id}">
+          <span class="drag-handle">⋮⋮</span>
+          <div class="habit-info">
+            <div class="habit-name">${habit.name}</div>
+            <div class="habit-meta">
+              <span class="badge freq-${habit.freq}">${freqLabel}</span>
+              <span class="badge type-${habit.type}">${habit.type === 'yes/no' ? '✓/✕' : '##'}</span>
+            </div>
+          </div>
+          <div class="habit-actions">
+            <button class="action-button" onclick="goToEdit('${habit.id}')">✎</button>
+            <button class="action-button" onclick="archiveHabit('${habit.id}')">↻</button>
+            <button class="action-button delete" onclick="openDelete('${habit.id}')">✕</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function render() {
+      const frequencies = ['daily', 'weekly', 'monthly', 'quarterly', 'archived'];
+      
+      frequencies.forEach(freq => {
+        const list = habits.filter(h => {
+          if (freq === 'archived') return h.archived;
+          return h.freq === freq && !h.archived;
+        });
+
+        const container = document.getElementById(freq === 'archived' ? 'archivedList' : `${freq}List`);
+        const count = document.getElementById(freq === 'archived' ? 'archivedCount' : `${freq}Count`);
+        const section = document.getElementById(freq === 'archived' ? 'archivedSection' : `${freq}Section`);
+
+        count.textContent = list.length;
+
+        if (list.length === 0) {
+          container.innerHTML = `<div class="empty-state">No ${freq} habits</div>`;
+        } else {
+          container.innerHTML = list.map(h => renderHabit(h)).join('');
+        }
+
+        if (freq === 'archived') {
+          section.style.display = showArchivedHabits ? 'block' : 'none';
+        }
+      });
+
+      // Add drag listeners
+      document.querySelectorAll('.habit-item').forEach(item => {
+        item.addEventListener('dragstart', (e) => {
+          draggedItem = e.currentTarget;
+        });
+        item.addEventListener('dragend', () => {
+          draggedItem = null;
+        });
+      });
+    }
+
+    function toggleArchived() {
+      showArchivedHabits = document.getElementById('showArchived').checked;
+      render();
+    }
+
+    function goToEdit(id) {
+      // Navigate to unified habit form in edit mode
+      window.location.href = `habit_tracker_habit_form.html?mode=edit&id=${id}`;
+    }
+
+    function goBack() {
+      // Navigate back to main tracker
+      window.location.href = 'habit_tracker_mockup.html';
+    }
+
+    function openDelete(id) {
+      deletingId = id;
+      const habit = habits.find(h => h.id === id);
+      document.getElementById('deleteMsg').textContent = `Delete "${habit.name}"? This action cannot be undone.`;
+      document.getElementById('deleteModal').classList.add('visible');
+    }
+
+    function closeDeleteModal() {
+      document.getElementById('deleteModal').classList.remove('visible');
+      deletingId = null;
+    }
+
+    function confirmDelete() {
+      const idx = habits.findIndex(h => h.id === deletingId);
+      if (idx !== -1) {
+        habits.splice(idx, 1);
+      }
+      closeDeleteModal();
+      render();
+    }
+
+    function archiveHabit(id) {
+      const habit = habits.find(h => h.id === id);
+      habit.archived = !habit.archived;
+      render();
+    }
+
+    function openAddHabit() {
+      window.location.href = 'habit_tracker_habit_form.html?mode=add';
+    }
+
+    // Initial render
+    render();
+  </script>
+</body>
+</html>

@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Habit Tracker - Habit Form</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: #0a0a0a;
+      color: #f5f1ed;
+    }
+    .container {
+      min-height: 100vh;
+      background: #0a0a0a;
+      padding: 12px 14px;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+    .header {
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .header button {
+      background: none;
+      border: none;
+      color: #8a8985;
+      cursor: pointer;
+      font-size: 18px;
+      padding: 4px;
+    }
+    .header h2 {
+      font-size: 14px;
+      font-weight: 400;
+      flex: 1;
+      margin: 0;
+    }
+    input, select {
+      font-family: inherit;
+      background: #141411;
+      border: 1px solid #2a2925;
+      color: #f5f1ed;
+      padding: 8px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      width: 100%;
+      margin-top: 6px;
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: #d97757;
+    }
+    label {
+      display: block;
+      color: #8a8985;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-top: 12px;
+      margin-bottom: 6px;
+    }
+    .form-section {
+      margin-bottom: 16px;
+    }
+    .radio-group {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+    .radio-option {
+      flex: 1;
+      min-width: 80px;
+    }
+    .radio-option input[type="radio"] {
+      display: none;
+    }
+    .radio-option label {
+      display: block;
+      padding: 8px 10px;
+      background: #141411;
+      border: 1px solid #2a2925;
+      border-radius: 4px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin: 0;
+      font-size: 11px;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    .radio-option input[type="radio"]:checked + label {
+      background: #d97757;
+      border-color: #d97757;
+      color: #0a0a0a;
+      font-weight: 600;
+    }
+    .day-selector {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .day-button {
+      padding: 8px 0;
+      background: #141411;
+      border: 1px solid #2a2925;
+      border-radius: 4px;
+      color: #8a8985;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .day-button:hover {
+      border-color: #d97757;
+    }
+    .day-button.selected {
+      background: #d97757;
+      border-color: #d97757;
+      color: #0a0a0a;
+      font-weight: 600;
+    }
+    .month-selector {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .month-button {
+      padding: 12px;
+      background: #141411;
+      border: 1px solid #2a2925;
+      border-radius: 4px;
+      color: #8a8985;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.2s;
+      text-align: center;
+    }
+    .month-button:hover {
+      border-color: #d97757;
+    }
+    .month-button.selected {
+      background: #d97757;
+      border-color: #d97757;
+      color: #0a0a0a;
+      font-weight: 600;
+    }
+    .note {
+      color: #8a8985;
+      font-size: 10px;
+      margin-top: 6px;
+    }
+    .button-group {
+      display: flex;
+      gap: 8px;
+      margin-top: 20px;
+      margin-bottom: 40px;
+    }
+    button.primary {
+      flex: 1;
+      padding: 10px;
+      background: #d97757;
+      border: none;
+      border-radius: 4px;
+      color: #0a0a0a;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 12px;
+      transition: opacity 0.2s;
+    }
+    button.primary:hover {
+      opacity: 0.9;
+    }
+    button.secondary {
+      flex: 1;
+      padding: 10px;
+      background: #141411;
+      border: 1px solid #2a2925;
+      border-radius: 4px;
+      color: #8a8985;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+    button.secondary:hover {
+      border-color: #8a8985;
+    }
+    .conditional {
+      display: none;
+    }
+    .conditional.visible {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <button onclick="goBack()">←</button>
+      <h2 id="pageTitle">Add New Habit</h2>
+    </div>
+
+    <div class="form-section">
+      <label for="habitName">Habit Name</label>
+      <input type="text" id="habitName" placeholder="e.g., Horseback riding" />
+    </div>
+
+    <!-- FREQUENCY SELECTOR -->
+    <div class="form-section">
+      <label>Frequency</label>
+      <div class="radio-group">
+        <div class="radio-option">
+          <input type="radio" id="freq-daily" name="frequency" value="daily" checked />
+          <label for="freq-daily">Daily</label>
+        </div>
+        <div class="radio-option">
+          <input type="radio" id="freq-weekly" name="frequency" value="weekly" />
+          <label for="freq-weekly">Weekly</label>
+        </div>
+        <div class="radio-option">
+          <input type="radio" id="freq-monthly" name="frequency" value="monthly" />
+          <label for="freq-monthly">Monthly</label>
+        </div>
+        <div class="radio-option">
+          <input type="radio" id="freq-quarterly" name="frequency" value="quarterly" />
+          <label for="freq-quarterly">Quarterly</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- HABIT TYPE SELECTOR -->
+    <div class="form-section">
+      <label>Habit Type</label>
+      <div class="radio-group">
+        <div class="radio-option">
+          <input type="radio" id="type-yesno" name="type" value="yes/no" checked />
+          <label for="type-yesno">Yes/No</label>
+        </div>
+        <div class="radio-option">
+          <input type="radio" id="type-number" name="type" value="number" />
+          <label for="type-number">Number</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONDITIONAL: Number Type Unit (appears when Number is selected) -->
+    <div class="conditional" id="unitSection">
+      <div class="form-section">
+        <label for="unit">Unit (optional)</label>
+        <input type="text" id="unit" placeholder="e.g., kg, lbs, am, min" />
+        <p class="note">Shows next to the input field when tracking this habit</p>
+      </div>
+    </div>
+
+    <!-- CONDITIONAL: Weekly Days Selector -->
+    <div class="conditional" id="weeklySection">
+      <div class="form-section">
+        <label>Select Days</label>
+        <div class="day-selector">
+          <button type="button" class="day-button" data-day="0">Sun</button>
+          <button type="button" class="day-button" data-day="1">Mon</button>
+          <button type="button" class="day-button" data-day="2">Tue</button>
+          <button type="button" class="day-button" data-day="3">Wed</button>
+          <button type="button" class="day-button" data-day="4">Thu</button>
+          <button type="button" class="day-button" data-day="5">Fri</button>
+          <button type="button" class="day-button" data-day="6">Sat</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONDITIONAL: Monthly Date Selector -->
+    <div class="conditional" id="monthlySection">
+      <div class="form-section">
+        <label for="monthlyDate">Day of Month</label>
+        <input type="number" id="monthlyDate" min="1" max="31" placeholder="1-31" value="15" />
+        <p class="note">Days 29-31 will skip months without that day</p>
+      </div>
+    </div>
+
+    <!-- CONDITIONAL: Quarterly Month Selector -->
+    <div class="conditional" id="quarterlySection">
+      <div class="form-section">
+        <label>Starting Month</label>
+        <div class="month-selector">
+          <button type="button" class="month-button" data-month="0">
+            <div style="font-weight: 600;">Jan</div>
+            <div style="font-size: 9px; color: #7a7570; margin-top: 2px;">Q1</div>
+          </button>
+          <button type="button" class="month-button" data-month="3">
+            <div style="font-weight: 600;">Apr</div>
+            <div style="font-size: 9px; color: #7a7570; margin-top: 2px;">Q2</div>
+          </button>
+          <button type="button" class="month-button" data-month="6">
+            <div style="font-weight: 600;">Jul</div>
+            <div style="font-size: 9px; color: #7a7570; margin-top: 2px;">Q3</div>
+          </button>
+          <button type="button" class="month-button" data-month="9">
+            <div style="font-weight: 600;">Oct</div>
+            <div style="font-size: 9px; color: #7a7570; margin-top: 2px;">Q4</div>
+          </button>
+        </div>
+        <p class="note">Habit will recur every 3 months starting from this month</p>
+      </div>
+    </div>
+
+    <!-- ACTION BUTTONS -->
+    <div class="button-group">
+      <button class="secondary" onclick="goBack()">Cancel</button>
+      <button class="primary" id="submitBtn" onclick="submitForm()">Add Habit</button>
+    </div>
+  </div>
+
+  <script>
+    let selectedDays = new Set();
+    let selectedQuarter = 0;
+    
+    // Get URL parameters
+    let mode = new URLSearchParams(window.location.search).get('mode') || 'add';
+    let habitId = new URLSearchParams(window.location.search).get('id');
+
+    // Sample habit data - in real app would come from backend
+    const habitsDatabase = {
+      'horseback-riding': {
+        name: 'Horseback riding',
+        freq: 'weekly',
+        type: 'yes/no',
+        days: [0, 2, 4]
+      },
+      'daily-weight': {
+        name: 'Daily weight',
+        freq: 'daily',
+        type: 'number',
+        unit: 'kg'
+      },
+      'massage': {
+        name: 'Massage',
+        freq: 'monthly',
+        type: 'yes/no',
+        day: 15
+      },
+      'cat-meds': {
+        name: 'Cat medication & vaccinations',
+        freq: 'quarterly',
+        type: 'yes/no',
+        startMonth: 0
+      }
+    };
+
+    const habit = mode === 'edit' ? habitsDatabase[habitId] : null;
+
+    document.addEventListener('DOMContentLoaded', function() {
+      try {
+        // Set page title and button text based on mode
+        const pageTitle = document.getElementById('pageTitle');
+        const submitBtn = document.getElementById('submitBtn');
+        
+        if (mode === 'edit' && habit) {
+          pageTitle.textContent = 'Edit Habit';
+          submitBtn.textContent = 'Save Changes';
+        } else {
+          pageTitle.textContent = 'Add New Habit';
+          submitBtn.textContent = 'Add Habit';
+        }
+
+        // Setup event listeners
+        const frequencyRadios = document.querySelectorAll('input[name="frequency"]');
+        const typeRadios = document.querySelectorAll('input[name="type"]');
+        const dayButtons = document.querySelectorAll('.day-button');
+        const monthButtons = document.querySelectorAll('.month-button');
+
+        // Frequency change handler
+        frequencyRadios.forEach(radio => {
+          radio.addEventListener('change', (e) => {
+            updateConditionalSections(e.target.value);
+          });
+        });
+
+        // Type change handler
+        typeRadios.forEach(radio => {
+          radio.addEventListener('change', (e) => {
+            const unitSection = document.getElementById('unitSection');
+            if (e.target.value === 'number') {
+              unitSection.classList.add('visible');
+            } else {
+              unitSection.classList.remove('visible');
+            }
+          });
+        });
+
+        // Day button handlers
+        dayButtons.forEach(button => {
+          button.addEventListener('click', (e) => {
+            e.preventDefault();
+            const day = button.dataset.day;
+            if (selectedDays.has(parseInt(day))) {
+              selectedDays.delete(parseInt(day));
+              button.classList.remove('selected');
+            } else {
+              selectedDays.add(parseInt(day));
+              button.classList.add('selected');
+            }
+          });
+        });
+
+        // Month button handlers
+        monthButtons.forEach(button => {
+          button.addEventListener('click', (e) => {
+            e.preventDefault();
+            monthButtons.forEach(b => b.classList.remove('selected'));
+            button.classList.add('selected');
+            selectedQuarter = parseInt(button.dataset.month);
+          });
+        });
+
+        // Load habit data if editing
+        if (mode === 'edit' && habit) {
+          loadHabitData();
+        } else {
+          // Initialize with daily view
+          updateConditionalSections('daily');
+        }
+
+        console.log('Habit form initialized successfully');
+      } catch (error) {
+        console.error('Error initializing habit form:', error);
+      }
+    });
+
+    function loadHabitData() {
+      if (!habit) {
+        console.warn('Habit not found, using defaults');
+        return;
+      }
+
+      try {
+        document.getElementById('habitName').value = habit.name;
+        document.getElementById(`freq-${habit.freq}`).checked = true;
+        
+        // Normalize type: "yes/no" -> "yesno"
+        const typeId = habit.type === 'yes/no' ? 'yesno' : habit.type;
+        document.getElementById(`type-${typeId}`).checked = true;
+
+        if (habit.unit) {
+          document.getElementById('unit').value = habit.unit;
+        }
+
+        if (habit.days) {
+          habit.days.forEach(day => {
+            selectedDays.add(day);
+            const dayButton = document.querySelector(`[data-day="${day}"]`);
+            if (dayButton) dayButton.classList.add('selected');
+          });
+        }
+
+        if (habit.day) {
+          document.getElementById('monthlyDate').value = habit.day;
+        }
+
+        if (habit.startMonth !== undefined) {
+          selectedQuarter = habit.startMonth;
+          const monthButton = document.querySelector(`[data-month="${habit.startMonth}"]`);
+          if (monthButton) monthButton.classList.add('selected');
+        }
+
+        updateConditionalSections(habit.freq);
+      } catch (error) {
+        console.error('Error loading habit data:', error);
+      }
+    }
+
+    function updateConditionalSections(frequency) {
+      try {
+        const sections = {
+          'daily': [],
+          'weekly': ['weeklySection'],
+          'monthly': ['monthlySection'],
+          'quarterly': ['quarterlySection']
+        };
+
+        // Hide all conditional sections
+        document.querySelectorAll('.conditional').forEach(section => {
+          section.classList.remove('visible');
+        });
+
+        // Show relevant sections
+        if (sections[frequency]) {
+          sections[frequency].forEach(sectionId => {
+            const section = document.getElementById(sectionId);
+            if (section) {
+              section.classList.add('visible');
+            }
+          });
+        }
+      } catch (error) {
+        console.error('Error updating conditional sections:', error);
+      }
+    }
+
+    function submitForm() {
+      try {
+        const name = document.getElementById('habitName').value;
+        const frequency = document.querySelector('input[name="frequency"]:checked').value;
+        const typeRadio = document.querySelector('input[name="type"]:checked').value;
+        
+        // Normalize type back: yesno -> yes/no
+        const type = typeRadio === 'yesno' ? 'yes/no' : typeRadio;
+
+        if (!name.trim()) {
+          alert('Please enter a habit name');
+          return;
+        }
+
+        let config = {
+          name,
+          frequency,
+          type
+        };
+
+        if (mode === 'edit') {
+          config.id = habitId;
+        }
+
+        if (type === 'number') {
+          config.unit = document.getElementById('unit').value || '';
+        }
+
+        if (frequency === 'weekly') {
+          if (selectedDays.size === 0) {
+            alert('Please select at least one day');
+            return;
+          }
+          config.days = Array.from(selectedDays).sort();
+        }
+
+        if (frequency === 'monthly') {
+          const dayValue = parseInt(document.getElementById('monthlyDate').value);
+          if (!dayValue || dayValue < 1 || dayValue > 31) {
+            alert('Please enter a valid day (1-31)');
+            return;
+          }
+          config.dayOfMonth = dayValue;
+        }
+
+        if (frequency === 'quarterly') {
+          config.startMonth = selectedQuarter;
+        }
+
+        console.log(`${mode === 'edit' ? 'Habit updated' : 'Habit created'}:`, config);
+        
+        // Navigate back to manage habits after saving
+        setTimeout(() => {
+          window.location.href = `habit_tracker_manage_habits_mockup.html?saved=true&mode=${mode}`;
+        }, 300);
+      } catch (error) {
+        console.error('Error submitting form:', error);
+        alert('Error: ' + error.message);
+      }
+    }
+
+    function goBack() {
+      // Navigate back to manage habits
+      window.location.href = 'habit_tracker_manage_habits_mockup.html';
+    }
+  </script>
+</body>
+</html>
