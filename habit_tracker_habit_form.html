@@ -10,10 +10,23 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
       background: #0a0a0a; color: #f5f1ed; touch-action: manipulation;
     }
-    .container { min-height: 100vh; background: #0a0a0a; padding: 12px 14px; max-width: 480px; margin: 0 auto; }
-    .header { margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
-    .header button { background: none; border: none; color: #8a8985; cursor: pointer; font-size: 18px; padding: 4px; }
-    .header h2 { font-size: 14px; font-weight: 400; flex: 1; margin: 0; }
+    .container { min-height: 100vh; background: #0a0a0a; }
+    .app-header {
+      position: sticky; top: 0; background: #0a0a0a;
+      border-bottom: 1px solid #2a2925; z-index: 10;
+    }
+    .app-header-top {
+      display: flex; align-items: center; justify-content: space-between; padding: 12px 14px;
+      border-bottom: 1px solid #2a2925;
+    }
+    .app-header-top h1 { font-size: 14px; font-weight: 400; margin: 0; cursor: pointer; }
+    .page-subheader {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px; border-bottom: 1px solid #2a2925;
+    }
+    .page-subheader button { background: none; border: none; color: #8a8985; cursor: pointer; font-size: 18px; padding: 4px; }
+    .page-subheader h2 { font-size: 12px; font-weight: 400; color: #8a8985; margin: 0; }
+    .form-content { padding: 12px 14px; max-width: 480px; margin: 0 auto; }
     input, select {
       font-family: inherit; background: #141411; border: 1px solid #2a2925;
       color: #f5f1ed; padding: 8px 10px; border-radius: 4px; font-size: 12px;
@@ -76,11 +89,28 @@
 </head>
 <body>
   <div class="container">
-    <div class="header">
-      <button onclick="goBack()">←</button>
-      <h2 id="pageTitle">Add New Habit</h2>
+    <div class="app-header">
+      <div class="app-header-top">
+        <button onclick="goToProfile()" style="background:none;border:none;color:#8a8985;cursor:pointer;padding:4px 8px;display:flex;align-items:center;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+          </svg>
+        </button>
+        <h1 onclick="goToMain()">Discipline</h1>
+        <button onclick="goToSettings()" style="background:none;border:none;color:#8a8985;cursor:pointer;padding:4px 8px;display:flex;align-items:center;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/>
+            <circle cx="8" cy="6" r="2" fill="#0a0a0a"/><circle cx="16" cy="12" r="2" fill="#0a0a0a"/><circle cx="10" cy="18" r="2" fill="#0a0a0a"/>
+          </svg>
+        </button>
+      </div>
+      <div class="page-subheader">
+        <button onclick="goBack()">←</button>
+        <h2 id="pageTitle">Add New Habit</h2>
+      </div>
     </div>
 
+    <div class="form-content">
     <div class="error-banner" id="errorBanner"></div>
 
     <div class="form-section">
@@ -171,6 +201,7 @@
       <button class="secondary" onclick="goBack()">Cancel</button>
       <button class="primary" id="submitBtn" onclick="submitForm()">Add Habit</button>
     </div>
+    </div><!-- end form-content -->
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -341,7 +372,10 @@
       el.classList.add('visible');
     }
 
-    function goBack() { window.location.href = 'habit_tracker_manage_habits_mockup.html'; }
+    function goBack()       { window.location.href = 'habit_tracker_manage_habits_mockup.html'; }
+    function goToMain()     { window.location.href = 'habit_tracker_mockup.html'; }
+    function goToProfile()  { window.location.href = 'habit_tracker_profile.html'; }
+    function goToSettings() { window.location.href = 'habit_tracker_manage_habits_mockup.html'; }
 
     initApp();
   </script>

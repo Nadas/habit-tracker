@@ -34,12 +34,15 @@
       return date.toISOString().split('T')[0];
     }
 
+    const PRAYER_KEYS    = ['fajr','dhuhr','asr','maghrib','isha'];
+    const PRAYER_DEFAULT = { fajr:false, dhuhr:false, asr:false, maghrib:false, isha:false, menstruating:false };
+
     let state = {
       activeTab: 'daily',
       selectedDate: new Date(),
       habits: [],               // habit rows from DB
       completionsByDate: {},    // { 'YYYY-MM-DD': { habitId: value } }
-      prayersByDate: {},        // { 'YYYY-MM-DD': { fajr, dhuhr, ... } }
+      prayersByDate: {},        // { 'YYYY-MM-DD': { fajr, dhuhr, ... menstruating } }
       dailyNotes: {},           // { 'YYYY-MM-DD': string }
       prayerHabitId: null,
       weightHabitId: null,
@@ -56,7 +59,7 @@
     }
 
     function getPrayers(date) {
-      return state.prayersByDate[dateKey(date)] || { fajr:false, dhuhr:false, asr:false, maghrib:false, isha:false };
+      return state.prayersByDate[dateKey(date)] || { ...PRAYER_DEFAULT };
     }
 
     function isFutureDate(date) {
@@ -76,17 +79,24 @@
       return v === undefined ? false : v;
     }
 
+    // Returns { dot, text } for a prayer state
+    function prayerStatus(prayers, future) {
+      if (future) return { dot:'#444441', text:'Incomplete' };
+      if (prayers.menstruating) return { dot:'#7a3535', text:'Menstruating' };
+      if (PRAYER_KEYS.every(k => prayers[k])) return { dot:'#d97757', text:'Complete' };
+      return { dot:'#444441', text:'Incomplete' };
+    }
+
     // ─── Data loading ───────────────────────────────────────────────────────────
 
     function parseCompletionValue(val) {
       if (val === 'true')  return true;
       if (val === 'false') return false;
-      return val; // string (wake-up time, weight, etc.)
+      return val;
     }
 
     async function loadCompletionsForDate(date) {
       const key = dateKey(date);
-      // Already cached — skip
       if (state.completionsByDate[key] !== undefined) return;
 
       const { data } = await db.from('completions')
@@ -95,11 +105,11 @@
         .eq('date', key);
 
       const completions = {};
-      let prayers = { fajr:false, dhuhr:false, asr:false, maghrib:false, isha:false };
+      let prayers = { ...PRAYER_DEFAULT };
 
       (data || []).forEach(c => {
         if (c.habit_id === state.prayerHabitId) {
-          try { prayers = JSON.parse(c.value); } catch(e) {}
+          try { prayers = { ...PRAYER_DEFAULT, ...JSON.parse(c.value) }; } catch(e) {}
         } else {
           completions[c.habit_id] = parseCompletionValue(c.value);
         }
@@ -137,21 +147,20 @@
 
       (data || []).forEach(c => {
         if (!byDate[c.date])  byDate[c.date]  = {};
-        if (!prayers[c.date]) prayers[c.date] = { fajr:false, dhuhr:false, asr:false, maghrib:false, isha:false };
+        if (!prayers[c.date]) prayers[c.date] = { ...PRAYER_DEFAULT };
 
         if (c.habit_id === state.prayerHabitId) {
-          try { prayers[c.date] = JSON.parse(c.value); } catch(e) {}
+          try { prayers[c.date] = { ...PRAYER_DEFAULT, ...JSON.parse(c.value) }; } catch(e) {}
         } else {
           byDate[c.date][c.habit_id] = parseCompletionValue(c.value);
         }
       });
 
-      // Fill every day in the range (even days with no completions)
       let d = new Date(startDate);
       while (d <= endDate) {
         const k = dateKey(d);
         state.completionsByDate[k] = byDate[k]  || {};
-        state.prayersByDate[k]     = prayers[k] || { fajr:false, dhuhr:false, asr:false, maghrib:false, isha:false };
+        state.prayersByDate[k]     = prayers[k] || { ...PRAYER_DEFAULT };
         d.setDate(d.getDate() + 1);
       }
     }
@@ -192,8 +201,21 @@
 
     async function togglePrayer(prayerId) {
       const key = dateKey(state.selectedDate);
-      if (!state.prayersByDate[key]) state.prayersByDate[key] = { fajr:false, dhuhr:false, asr:false, maghrib:false, isha:false };
+      if (!state.prayersByDate[key]) state.prayersByDate[key] = { ...PRAYER_DEFAULT };
       state.prayersByDate[key][prayerId] = !state.prayersByDate[key][prayerId];
+      render();
+
+      if (!state.prayerHabitId) return;
+      await db.from('completions').upsert(
+        { user_id: currentUser.id, habit_id: state.prayerHabitId, date: key, value: JSON.stringify(state.prayersByDate[key]) },
+        { onConflict: 'habit_id,date' }
+      );
+    }
+
+    async function toggleMenstruating() {
+      const key = dateKey(state.selectedDate);
+      if (!state.prayersByDate[key]) state.prayersByDate[key] = { ...PRAYER_DEFAULT };
+      state.prayersByDate[key].menstruating = !state.prayersByDate[key].menstruating;
       render();
 
       if (!state.prayerHabitId) return;
@@ -306,6 +328,22 @@
         </div>`;
     }
 
+    // Renders a single grid cell for weekly/monthly views
+    function renderGridCell(h, k) {
+      if (h.id === state.prayerHabitId) {
+        const dp = state.prayersByDate[k] || {};
+        let bg = '#2a2925', op = 0.4;
+        if (dp.menstruating) { bg = '#7a3535'; op = 1; }
+        else if (PRAYER_KEYS.every(pk => dp[pk])) { bg = '#d97757'; op = 1; }
+        return `<div style="width:10px;height:10px;border-radius:2px;background:${bg};opacity:${op};margin:0 auto;"></div>`;
+      }
+      const val  = (state.completionsByDate[k] || {})[h.id];
+      const done = h.type === 'number'
+        ? (val !== null && val !== undefined && val !== '' && val !== false && val !== 'false')
+        : (val === true || val === 'true');
+      return `<div style="width:10px;height:10px;border-radius:2px;background:${done?'#d97757':'#2a2925'};opacity:${done?1:0.4};margin:0 auto;"></div>`;
+    }
+
     // ─── View renderers ──────────────────────────────────────────────────────────
 
     function renderDailyView() {
@@ -313,18 +351,25 @@
       const key    = dateKey(state.selectedDate);
       const future = isFutureDate(state.selectedDate);
 
-      const morningHabits = state.habits.filter(h => h.frequency === 'daily'   && h.section === 'morning');
+      // Exclude the prayer habit from morning/evening sections
+      const morningHabits = state.habits.filter(h =>
+        h.frequency === 'daily' && h.section === 'morning' && h.id !== state.prayerHabitId
+      );
       const eveningHabits = [
-        ...state.habits.filter(h => h.frequency === 'daily'  && h.section === 'evening'),
-        ...state.habits.filter(h => h.frequency === 'weekly' && h.days && h.days.includes(dow) && h.section === 'evening'),
+        ...state.habits.filter(h =>
+          h.frequency === 'daily' && h.section === 'evening' && h.id !== state.prayerHabitId
+        ),
+        ...state.habits.filter(h =>
+          h.frequency === 'weekly' && h.days && h.days.includes(dow) && h.section === 'evening'
+        ),
       ];
       const weeklyHabits = state.habits.filter(h =>
         h.frequency === 'weekly' && h.days && h.days.includes(dow) && !h.section
       );
 
-      const prayers            = getPrayers(state.selectedDate);
-      const allPrayersComplete = !future && Object.values(prayers).every(v => v);
-      const hasPrayerHabit     = !!state.prayerHabitId;
+      const prayers        = getPrayers(state.selectedDate);
+      const status         = prayerStatus(prayers, future);
+      const hasPrayerHabit = !!state.prayerHabitId;
 
       const prayerRow = hasPrayerHabit ? `
         <div>
@@ -332,8 +377,8 @@
           <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#141411;border-radius:4px;border:1px solid #2a2925;">
             <div style="flex:1;"><p style="color:#f5f1ed;font-size:12px;font-weight:400;">Prayers</p></div>
             <div style="display:flex;align-items:center;gap:6px;">
-              <div style="width:6px;height:6px;border-radius:50%;background:${allPrayersComplete?'#d97757':'#444441'};"></div>
-              <span style="color:#8a8985;font-size:11px;">${allPrayersComplete?'Complete':'Incomplete'}</span>
+              <div style="width:6px;height:6px;border-radius:50%;background:${status.dot};"></div>
+              <span style="color:#8a8985;font-size:11px;">${status.text}</span>
             </div>
           </div>
         </div>` : '';
@@ -365,23 +410,36 @@
         { id:'maghrib', label:'Maghrib' },
         { id:'isha',    label:'Isha'    },
       ];
-      const prayers    = getPrayers(state.selectedDate);
-      const future     = isFutureDate(state.selectedDate);
-      const allComplete = !future && Object.values(prayers).every(v => v);
+      const prayers       = getPrayers(state.selectedDate);
+      const future        = isFutureDate(state.selectedDate);
+      const isMenstruating = prayers.menstruating;
+      const status        = prayerStatus(prayers, future);
 
       let html = `
         <div style="display:flex;flex-direction:column;gap:10px;">
           <div style="margin-bottom:4px;">
             <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:6px;">Status</p>
             <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#141411;border-radius:4px;border:1px solid #2a2925;">
-              <div style="width:6px;height:6px;border-radius:50%;background:${allComplete?'#d97757':'#444441'};"></div>
-              <p style="color:#f5f1ed;font-size:12px;font-weight:400;">${allComplete?'Complete':'Incomplete'}</p>
+              <div style="width:6px;height:6px;border-radius:50%;background:${status.dot};"></div>
+              <p style="color:#f5f1ed;font-size:12px;font-weight:400;flex:1;">${status.text}</p>
             </div>
           </div>
-          <div style="display:flex;flex-direction:column;gap:6px;">`;
+
+          <div>
+            <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:6px;">Menstruating</p>
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#141411;border-radius:4px;border:1px solid #2a2925;">
+              <div style="flex:1;"><p style="color:#f5f1ed;font-size:12px;font-weight:400;">No prayers required</p></div>
+              <button onclick="toggleMenstruating()"
+                style="width:40px;height:24px;border-radius:12px;border:none;background:${isMenstruating?'#7a3535':'#2a2925'};cursor:pointer;position:relative;transition:background 0.2s;flex-shrink:0;">
+                <div style="position:absolute;width:20px;height:20px;background:#0a0a0a;border-radius:50%;top:2px;left:${isMenstruating?'18px':'2px'};transition:left 0.2s;"></div>
+              </button>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:6px;${isMenstruating?'opacity:0.4;pointer-events:none;':''}">`;
 
       prayerList.forEach(p => {
-        const done = !future && prayers[p.id];
+        const done = !future && !isMenstruating && prayers[p.id];
         html += `
           <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#141411;border-radius:4px;border:1px solid #2a2925;">
             <div style="flex:1;"><p style="color:#f5f1ed;font-size:12px;font-weight:400;">${p.label}</p></div>
@@ -395,11 +453,12 @@
     }
 
     function renderWeeklyView() {
-      const dow        = state.selectedDate.getDay();
+      const dow         = state.selectedDate.getDay();
       const startOfWeek = new Date(state.selectedDate);
       startOfWeek.setDate(state.selectedDate.getDate() - dow);
 
-      const dailyHabits = state.habits.filter(h => h.frequency === 'daily' && h.id !== state.prayerHabitId);
+      // Include prayer habit in grid (filtered when prayerHabitId exists)
+      const gridHabits   = state.habits.filter(h => h.frequency === 'daily');
       const dayShortNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
       let html = `
@@ -408,10 +467,10 @@
             Week of ${monthNames[startOfWeek.getMonth()]} ${startOfWeek.getDate()}
           </p>
           <div style="background:#141411;border-radius:6px;border:1px solid #2a2925;padding:8px;overflow-x:auto;">
-            <table style="width:auto;min-width:100%;border-collapse:collapse;font-size:10px;">
+            <table style="width:auto;border-collapse:collapse;font-size:10px;">
               <thead><tr><th style="width:28px;padding-right:4px;"></th>`;
 
-      dailyHabits.forEach(h => {
+      gridHabits.forEach(h => {
         html += `<th style="padding:4px 2px;width:24px;height:100px;">
           <p style="color:#f5f1ed;font-weight:400;font-size:9px;writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;">${h.name}</p>
         </th>`;
@@ -420,19 +479,14 @@
       html += `</tr></thead><tbody>`;
 
       for (let i = 0; i < 7; i++) {
-        const d  = new Date(startOfWeek); d.setDate(startOfWeek.getDate() + i);
-        const k  = dateKey(d);
-        const cs = state.completionsByDate[k] || {};
+        const d = new Date(startOfWeek); d.setDate(startOfWeek.getDate() + i);
+        const k = dateKey(d);
 
         html += `<tr style="border-top:1px solid #2a2925;">
           <td style="padding:3px 4px;text-align:right;color:#7a7570;font-size:9px;font-weight:600;">${dayShortNames[d.getDay()]}</td>`;
 
-        dailyHabits.forEach(h => {
-          const val  = cs[h.id];
-          const done = val === true || val === 'true';
-          html += `<td style="padding:3px 2px;text-align:center;">
-            <div style="width:10px;height:10px;border-radius:2px;background:${done?'#d97757':'#2a2925'};opacity:${done?1:0.4};margin:0 auto;"></div>
-          </td>`;
+        gridHabits.forEach(h => {
+          html += `<td style="padding:3px 2px;text-align:center;">${renderGridCell(h, k)}</td>`;
         });
 
         html += `</tr>`;
@@ -446,7 +500,7 @@
       const year        = state.selectedDate.getFullYear();
       const month       = state.selectedDate.getMonth();
       const daysInMonth = new Date(year, month + 1, 0).getDate();
-      const dailyHabits = state.habits.filter(h => h.frequency === 'daily' && h.id !== state.prayerHabitId);
+      const gridHabits  = state.habits.filter(h => h.frequency === 'daily');
 
       let html = `
         <div style="display:flex;flex-direction:column;gap:10px;">
@@ -454,10 +508,10 @@
             ${monthNames[month]} ${year}
           </p>
           <div style="background:#141411;border-radius:6px;border:1px solid #2a2925;padding:8px;overflow-x:auto;">
-            <table style="width:auto;min-width:100%;border-collapse:collapse;font-size:10px;">
+            <table style="width:auto;border-collapse:collapse;font-size:10px;">
               <thead><tr><th style="width:28px;padding-right:4px;"></th>`;
 
-      dailyHabits.forEach(h => {
+      gridHabits.forEach(h => {
         html += `<th style="padding:4px 2px;width:24px;height:100px;">
           <p style="color:#f5f1ed;font-weight:400;font-size:9px;writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;">${h.name}</p>
         </th>`;
@@ -466,18 +520,13 @@
       html += `</tr></thead><tbody>`;
 
       for (let day = 1; day <= daysInMonth; day++) {
-        const k  = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-        const cs = state.completionsByDate[k] || {};
+        const k = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
 
         html += `<tr style="border-top:1px solid #2a2925;">
           <td style="padding:3px 4px;text-align:right;color:#7a7570;font-size:9px;font-weight:600;">${day}</td>`;
 
-        dailyHabits.forEach(h => {
-          const val  = cs[h.id];
-          const done = val === true || val === 'true';
-          html += `<td style="padding:3px 2px;text-align:center;">
-            <div style="width:10px;height:10px;border-radius:2px;background:${done?'#d97757':'#2a2925'};opacity:${done?1:0.4};margin:0 auto;"></div>
-          </td>`;
+        gridHabits.forEach(h => {
+          html += `<td style="padding:3px 2px;text-align:center;">${renderGridCell(h, k)}</td>`;
         });
 
         html += `</tr>`;
@@ -492,7 +541,6 @@
       const month = state.selectedDate.getMonth();
       const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-      // Build ordered weight entries for the month
       const monthData = [];
       for (let d = 1; d <= daysInMonth; d++) {
         const k = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
@@ -505,14 +553,14 @@
         return `<div style="text-align:center;padding:40px 20px;color:#7a7570;font-size:12px;">No weight data logged yet for ${monthNames[month]} ${year}.</div>`;
       }
 
-      const weights      = monthData.map(d => d.weight);
-      const startWeight  = weights[0];
+      const weights       = monthData.map(d => d.weight);
+      const startWeight   = weights[0];
       const currentWeight = weights[weights.length - 1];
-      const goalWeight   = 63.0;
-      const weightLost   = startWeight - currentWeight;
-      const weightToGoal = currentWeight - goalWeight;
+      const goalWeight    = 63.0;
+      const weightLost    = startWeight - currentWeight;
+      const weightToGoal  = currentWeight - goalWeight;
 
-      const chartWidth   = 420, chartHeight = 200;
+      const chartWidth  = 420, chartHeight = 200;
       const pL = 40, pR = 20, pT = 20, pB = 40;
       const iW = chartWidth - pL - pR;
       const iH = chartHeight - pT - pB;
@@ -591,8 +639,13 @@
     // ─── Main render ─────────────────────────────────────────────────────────────
 
     function render() {
-      const tabs      = ['daily','prayer','weekly','monthly','stats'];
+      // Prayer tab only visible if user has a Prayers habit
+      const allTabs   = ['daily','prayer','weekly','monthly','stats'];
+      const tabs      = allTabs.filter(t => t !== 'prayer' || !!state.prayerHabitId);
       const tabLabels = { daily:'Today', prayer:'Prayers', weekly:'Week', monthly:'Month', stats:'Stats' };
+
+      // If prayer tab was active but habit was removed, fall back to daily
+      if (state.activeTab === 'prayer' && !state.prayerHabitId) state.activeTab = 'daily';
 
       let tabNav = '';
       tabs.forEach(tab => {
@@ -679,7 +732,6 @@
     // ─── Boot ────────────────────────────────────────────────────────────────────
 
     async function initApp() {
-      // Auth check
       const { data: { session } } = await db.auth.getSession();
       if (!session) {
         window.location.href = 'habit_tracker_login.html';
@@ -687,8 +739,7 @@
       }
       currentUser = session.user;
 
-      // Load all non-archived habits ordered by sort_order
-      const { data: habits, error } = await db.from('habits')
+      const { data: habits } = await db.from('habits')
         .select('*')
         .eq('archived', false)
         .order('sort_order');
@@ -697,11 +748,12 @@
 
       // Identify special habit IDs
       state.prayerHabitId = state.habits.find(h => h.name === 'Prayers')?.id || null;
-      state.weightHabitId = state.habits.find(h => h.name === 'Daily weight')?.id || null;
+      // Weight habit: number type with kg unit or "weight" in name
+      state.weightHabitId = state.habits.find(h =>
+        h.type === 'number' && (h.unit === 'kg' || h.name.toLowerCase().includes('weight'))
+      )?.id || null;
 
-      // Load data for the initial tab/date
       await loadTabData();
-
       render();
     }
 

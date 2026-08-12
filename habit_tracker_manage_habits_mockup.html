@@ -13,12 +13,20 @@
       touch-action: manipulation;
     }
     .container { min-height: 100vh; background: #0a0a0a; }
-    .header {
+    .app-header {
       position: sticky; top: 0; background: #0a0a0a;
-      border-bottom: 1px solid #2a2925; padding: 12px 14px;
-      z-index: 10; display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid #2a2925; z-index: 10;
     }
-    .header h1 { font-size: 14px; font-weight: 400; margin: 0; }
+    .app-header-top {
+      display: flex; align-items: center; justify-content: space-between; padding: 12px 14px;
+      border-bottom: 1px solid #2a2925;
+    }
+    .app-header-top h1 { font-size: 14px; font-weight: 400; margin: 0; cursor: pointer; }
+    .page-subheader {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px; border-bottom: 1px solid #2a2925;
+    }
+    .page-subheader span { font-size: 12px; color: #8a8985; }
     .content { padding: 12px 14px; max-width: 480px; margin: 0 auto; }
     .section { margin-bottom: 20px; }
     .section-title {
@@ -83,12 +91,25 @@
 </head>
 <body>
   <div class="container">
-    <div class="header">
-      <div style="display:flex;align-items:center;gap:10px;flex:1;">
-        <button onclick="goBack()" style="background:none;border:none;color:#8a8985;cursor:pointer;font-size:18px;padding:4px 8px;">←</button>
-        <h1>Manage Habits</h1>
+    <div class="app-header">
+      <div class="app-header-top">
+        <button onclick="goToProfile()" style="background:none;border:none;color:#8a8985;cursor:pointer;padding:4px 8px;display:flex;align-items:center;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+          </svg>
+        </button>
+        <h1 onclick="goBack()">Discipline</h1>
+        <button onclick="goBack()" style="background:none;border:none;color:#8a8985;cursor:pointer;padding:4px 8px;display:flex;align-items:center;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/>
+            <circle cx="8" cy="6" r="2" fill="#0a0a0a"/><circle cx="16" cy="12" r="2" fill="#0a0a0a"/><circle cx="10" cy="18" r="2" fill="#0a0a0a"/>
+          </svg>
+        </button>
       </div>
-      <button class="add-button" onclick="openAddHabit()">+ Add</button>
+      <div class="page-subheader">
+        <span>Manage Habits</span>
+        <button class="add-button" onclick="openAddHabit()">+ Add</button>
+      </div>
     </div>
 
     <div class="content" id="content">
@@ -214,6 +235,7 @@
     }
 
     function goBack()       { window.location.href = 'habit_tracker_mockup.html'; }
+    function goToProfile()  { window.location.href = 'habit_tracker_profile.html'; }
     function openAddHabit() { window.location.href = 'habit_tracker_habit_form.html?mode=add'; }
     function goToEdit(id)   { window.location.href = `habit_tracker_habit_form.html?mode=edit&id=${id}`; }
 

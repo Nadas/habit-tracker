@@ -71,6 +71,15 @@
     <div class="content">
       <div class="error-banner" id="errorBanner"></div>
 
+      <!-- Name -->
+      <div class="section-title">Name</div>
+      <div class="form-section">
+        <div class="form-group">
+          <label class="form-label">Display Name</label>
+          <input class="form-input" type="text" id="inputName" placeholder="Your name" />
+        </div>
+      </div>
+
       <!-- Email -->
       <div class="section-title">Email</div>
       <div class="form-section">
@@ -113,12 +122,14 @@
       const { data: { session } } = await db.auth.getSession();
       if (!session) { window.location.href = 'habit_tracker_login.html'; return; }
       currentUser = session.user;
+      document.getElementById('inputName').value  = currentUser.user_metadata?.full_name || '';
       document.getElementById('inputEmail').value = currentUser.email || '';
     }
 
     async function saveChanges() {
-      const newEmail   = document.getElementById('inputEmail').value.trim();
-      const newPass    = document.getElementById('inputNewPassword').value;
+      const newName     = document.getElementById('inputName').value.trim();
+      const newEmail    = document.getElementById('inputEmail').value.trim();
+      const newPass     = document.getElementById('inputNewPassword').value;
       const confirmPass = document.getElementById('inputConfirmPassword').value;
       const passwordError = document.getElementById('passwordError');
       const errorBanner   = document.getElementById('errorBanner');
@@ -135,9 +146,10 @@
         return;
       }
 
-      // Nothing to update
       const emailChanged = newEmail && newEmail !== currentUser.email;
-      if (!emailChanged && !newPass) {
+      const nameChanged  = newName !== (currentUser.user_metadata?.full_name || '');
+
+      if (!emailChanged && !newPass && !nameChanged) {
         showToast('No changes to save');
         return;
       }
@@ -147,6 +159,7 @@
       const updates = {};
       if (emailChanged) updates.email    = newEmail;
       if (newPass)      updates.password = newPass;
+      if (nameChanged)  updates.data     = { full_name: newName };
 
       const { error } = await db.auth.updateUser(updates);
 
@@ -154,6 +167,11 @@
         showError(error.message || 'Could not save changes. Please try again.');
         saveBtn.disabled = false;
         return;
+      }
+
+      // Update local user metadata
+      if (nameChanged) {
+        currentUser.user_metadata = { ...currentUser.user_metadata, full_name: newName };
       }
 
       // Clear password fields
@@ -164,8 +182,10 @@
 
       if (emailChanged) {
         showToast('Check your new email to confirm the change');
-      } else {
+      } else if (newPass) {
         showToast('Password updated');
+      } else {
+        showToast('Name saved');
       }
     }
 
