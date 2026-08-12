@@ -315,6 +315,11 @@
     let deletingId = null;
     let draggedId = null;
 
+    // Touch drag state
+    let touchClone = null;
+    let touchOffsetX = 0;
+    let touchOffsetY = 0;
+
     const habits = [
       // Daily
       { id: 'morning-skincare', name: 'Morning skincare', freq: 'daily', type: 'yes/no', archived: false },
@@ -412,8 +417,10 @@
         }
       });
 
-      // Add drag listeners
+      // Add drag listeners (mouse + touch)
       document.querySelectorAll('.habit-item').forEach(item => {
+
+        // — Mouse drag (desktop) —
         item.addEventListener('dragstart', (e) => {
           draggedId = e.currentTarget.dataset.id;
           e.currentTarget.classList.add('dragging');
@@ -437,24 +444,89 @@
         item.addEventListener('drop', (e) => {
           e.preventDefault();
           e.currentTarget.classList.remove('drag-over');
-          const targetId = e.currentTarget.dataset.id;
-          if (!draggedId || draggedId === targetId) return;
+          performDrop(e.currentTarget.dataset.id);
+        });
 
-          const draggedHabit = habits.find(h => h.id === draggedId);
-          const targetHabit = habits.find(h => h.id === targetId);
-          if (!draggedHabit || !targetHabit) return;
+        // — Touch drag (mobile) —
+        item.addEventListener('touchstart', (e) => {
+          const touch = e.touches[0];
+          draggedId = item.dataset.id;
+          const rect = item.getBoundingClientRect();
+          touchOffsetX = touch.clientX - rect.left;
+          touchOffsetY = touch.clientY - rect.top;
 
-          // Only allow reordering within the same frequency group
-          if (draggedHabit.freq !== targetHabit.freq || draggedHabit.archived !== targetHabit.archived) return;
+          // Create a floating clone that follows the finger
+          touchClone = item.cloneNode(true);
+          touchClone.style.cssText = `
+            position: fixed;
+            left: ${rect.left}px;
+            top: ${rect.top}px;
+            width: ${rect.width}px;
+            opacity: 0.85;
+            pointer-events: none;
+            z-index: 1000;
+            border-color: #d97757;
+          `;
+          document.body.appendChild(touchClone);
+          item.classList.add('dragging');
+        }, { passive: true });
 
-          const draggedIdx = habits.indexOf(draggedHabit);
-          habits.splice(draggedIdx, 1);
-          const newTargetIdx = habits.indexOf(targetHabit);
-          habits.splice(newTargetIdx, 0, draggedHabit);
+        item.addEventListener('touchmove', (e) => {
+          if (!draggedId || !touchClone) return;
+          e.preventDefault();
+          const touch = e.touches[0];
 
-          render();
+          // Move the clone with the finger
+          touchClone.style.left = (touch.clientX - touchOffsetX) + 'px';
+          touchClone.style.top  = (touch.clientY - touchOffsetY) + 'px';
+
+          // Find which habit-item is under the finger
+          touchClone.style.display = 'none';
+          const el = document.elementFromPoint(touch.clientX, touch.clientY);
+          touchClone.style.display = '';
+          const target = el && el.closest('.habit-item');
+
+          document.querySelectorAll('.habit-item').forEach(el => el.classList.remove('drag-over'));
+          if (target && target.dataset.id !== draggedId) {
+            target.classList.add('drag-over');
+          }
+        }, { passive: false });
+
+        item.addEventListener('touchend', (e) => {
+          if (!draggedId) return;
+          const touch = e.changedTouches[0];
+
+          // Find drop target before removing clone
+          touchClone.style.display = 'none';
+          const el = document.elementFromPoint(touch.clientX, touch.clientY);
+          const target = el && el.closest('.habit-item');
+
+          // Clean up
+          touchClone.remove();
+          touchClone = null;
+          item.classList.remove('dragging');
+          document.querySelectorAll('.habit-item').forEach(el => el.classList.remove('drag-over'));
+
+          if (target && target.dataset.id !== draggedId) {
+            performDrop(target.dataset.id);
+          }
+          draggedId = null;
         });
       });
+    }
+
+    function performDrop(targetId) {
+      if (!draggedId || draggedId === targetId) return;
+      const draggedHabit = habits.find(h => h.id === draggedId);
+      const targetHabit  = habits.find(h => h.id === targetId);
+      if (!draggedHabit || !targetHabit) return;
+      if (draggedHabit.freq !== targetHabit.freq || draggedHabit.archived !== targetHabit.archived) return;
+
+      const draggedIdx = habits.indexOf(draggedHabit);
+      habits.splice(draggedIdx, 1);
+      const newTargetIdx = habits.indexOf(targetHabit);
+      habits.splice(newTargetIdx, 0, draggedHabit);
+      render();
     }
 
     function goToEdit(id) {
