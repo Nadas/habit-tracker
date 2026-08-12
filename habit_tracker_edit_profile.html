@@ -2,165 +2,82 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Habit Tracker - Edit Profile</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-      background: #0a0a0a;
-      color: #f5f1ed;
+      background: #0a0a0a; color: #f5f1ed; touch-action: manipulation;
     }
-    .container {
-      min-height: 100vh;
-      background: #0a0a0a;
-    }
+    .container { min-height: 100vh; background: #0a0a0a; }
     .header {
-      position: sticky;
-      top: 0;
-      background: #0a0a0a;
-      border-bottom: 1px solid #2a2925;
-      padding: 12px 14px;
-      z-index: 10;
-      display: flex;
-      align-items: center;
-      gap: 10px;
+      position: sticky; top: 0; background: #0a0a0a;
+      border-bottom: 1px solid #2a2925; padding: 12px 14px;
+      z-index: 10; display: flex; align-items: center; gap: 10px;
     }
-    .header button {
-      background: none;
-      border: none;
-      color: #8a8985;
-      cursor: pointer;
-      font-size: 18px;
-      padding: 4px;
-    }
-    .header h1 {
-      font-size: 14px;
-      font-weight: 400;
-      flex: 1;
-      margin: 0;
-    }
-    .content {
-      padding: 12px 14px;
-      max-width: 480px;
-      margin: 0 auto;
-    }
+    .header button { background: none; border: none; color: #8a8985; cursor: pointer; font-size: 18px; padding: 4px; }
+    .header h1 { font-size: 14px; font-weight: 400; flex: 1; margin: 0; }
+    .content { padding: 12px 14px; max-width: 480px; margin: 0 auto; }
     .section-title {
-      color: #8a8985;
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-      margin-bottom: 10px;
+      color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px;
+      text-transform: uppercase; margin-bottom: 10px;
     }
     .form-section {
-      background: #141411;
-      border: 1px solid #2a2925;
-      border-radius: 6px;
-      padding: 14px;
-      margin-bottom: 16px;
+      background: #141411; border: 1px solid #2a2925;
+      border-radius: 6px; padding: 14px; margin-bottom: 16px;
     }
-    .form-group {
-      margin-bottom: 10px;
-    }
-    .form-group:last-child {
-      margin-bottom: 0;
-    }
-    .form-label {
-      font-size: 10px;
-      color: #8a8985;
-      margin-bottom: 5px;
-      display: block;
-    }
+    .form-group { margin-bottom: 10px; }
+    .form-group:last-child { margin-bottom: 0; }
+    .form-label { font-size: 10px; color: #8a8985; margin-bottom: 5px; display: block; }
     .form-input {
-      width: 100%;
-      background: #0a0a0a;
-      border: 1px solid #2a2925;
-      color: #f5f1ed;
-      padding: 9px 12px;
-      border-radius: 4px;
-      font-size: 12px;
-      font-family: inherit;
-      transition: border-color 0.2s;
-      outline: none;
+      width: 100%; background: #0a0a0a; border: 1px solid #2a2925;
+      color: #f5f1ed; padding: 9px 12px; border-radius: 4px;
+      font-size: 12px; font-family: inherit; transition: border-color 0.2s; outline: none;
     }
-    .form-input:focus {
-      border-color: #d97757;
+    .form-input:focus { border-color: #d97757; }
+    .error-banner {
+      background: rgba(217,119,87,0.1); border: 1px solid rgba(217,119,87,0.3);
+      color: #d97757; padding: 8px 10px; border-radius: 4px; font-size: 11px;
+      margin-bottom: 12px; display: none;
     }
-    .divider {
-      border: none;
-      border-top: 1px solid #2a2925;
-      margin: 14px 0;
-    }
-    .error-text {
-      font-size: 10px;
-      color: #d97757;
-      margin-top: 4px;
-      display: none;
-    }
+    .error-banner.visible { display: block; }
+    .error-text { font-size: 10px; color: #d97757; margin-top: 4px; display: none; }
     .save-button {
-      width: 100%;
-      padding: 10px;
-      background: #d97757;
-      border: none;
-      border-radius: 4px;
-      color: #0a0a0a;
-      cursor: pointer;
-      font-size: 12px;
-      font-weight: 600;
-      font-family: inherit;
-      transition: opacity 0.2s;
-      margin-bottom: 40px;
+      width: 100%; padding: 10px; background: #d97757; border: none;
+      border-radius: 4px; color: #0a0a0a; cursor: pointer; font-size: 12px;
+      font-weight: 600; font-family: inherit; transition: opacity 0.2s; margin-bottom: 40px;
     }
-    .save-button:hover {
-      opacity: 0.9;
-    }
+    .save-button:hover { opacity: 0.9; }
+    .save-button:disabled { opacity: 0.5; cursor: default; }
     .toast {
-      position: fixed;
-      bottom: 24px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: #2a2925;
-      color: #f5f1ed;
-      padding: 9px 16px;
-      border-radius: 4px;
-      font-size: 12px;
-      opacity: 0;
-      transition: opacity 0.2s;
-      pointer-events: none;
-      white-space: nowrap;
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: #2a2925; color: #f5f1ed; padding: 9px 16px;
+      border-radius: 4px; font-size: 12px; opacity: 0;
+      transition: opacity 0.2s; pointer-events: none; white-space: nowrap;
     }
-    .toast.visible {
-      opacity: 1;
-    }
+    .toast.visible { opacity: 1; }
+    .note { color: #7a7570; font-size: 10px; margin-top: 4px; }
   </style>
 </head>
 <body>
   <div class="container">
-    <!-- Header -->
     <div class="header">
       <button onclick="goBack()">←</button>
       <h1>Edit Profile</h1>
-      <div style="width: 28px;"></div>
+      <div style="width:28px;"></div>
     </div>
 
-    <!-- Content -->
     <div class="content">
+      <div class="error-banner" id="errorBanner"></div>
 
-      <!-- Profile Info -->
-      <div class="section-title">Profile Info</div>
+      <!-- Email -->
+      <div class="section-title">Email</div>
       <div class="form-section">
         <div class="form-group">
-          <label class="form-label">Name</label>
-          <input class="form-input" type="text" id="inputName" value="Nada" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Email</label>
-          <input class="form-input" type="email" id="inputEmail" value="nada@example.com" />
+          <label class="form-label">Email Address</label>
+          <input class="form-input" type="email" id="inputEmail" placeholder="Loading…" />
+          <p class="note">You'll need to verify the new address before it takes effect</p>
         </div>
       </div>
 
@@ -168,60 +85,106 @@
       <div class="section-title">Change Password</div>
       <div class="form-section">
         <div class="form-group">
-          <label class="form-label">Current Password</label>
-          <input class="form-input" type="password" id="inputCurrentPassword" placeholder="Enter current password" />
-        </div>
-        <div class="form-group">
           <label class="form-label">New Password</label>
-          <input class="form-input" type="password" id="inputNewPassword" placeholder="Enter new password" />
+          <input class="form-input" type="password" id="inputNewPassword" placeholder="Leave blank to keep current" />
         </div>
         <div class="form-group">
           <label class="form-label">Confirm New Password</label>
-          <input class="form-input" type="password" id="inputConfirmPassword" placeholder="Confirm new password" />
+          <input class="form-input" type="password" id="inputConfirmPassword" placeholder="Repeat new password" />
           <div class="error-text" id="passwordError">Passwords don't match</div>
         </div>
       </div>
 
-      <button class="save-button" onclick="saveChanges()">Save Changes</button>
+      <button class="save-button" id="saveBtn" onclick="saveChanges()">Save Changes</button>
     </div>
   </div>
 
   <div class="toast" id="toast"></div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
   <script>
-    function goBack() {
-      window.location.href = 'habit_tracker_profile.html';
+    const { createClient } = supabase;
+    const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let currentUser = null;
+
+    async function initApp() {
+      const { data: { session } } = await db.auth.getSession();
+      if (!session) { window.location.href = 'habit_tracker_login.html'; return; }
+      currentUser = session.user;
+      document.getElementById('inputEmail').value = currentUser.email || '';
+    }
+
+    async function saveChanges() {
+      const newEmail   = document.getElementById('inputEmail').value.trim();
+      const newPass    = document.getElementById('inputNewPassword').value;
+      const confirmPass = document.getElementById('inputConfirmPassword').value;
+      const passwordError = document.getElementById('passwordError');
+      const errorBanner   = document.getElementById('errorBanner');
+      const saveBtn       = document.getElementById('saveBtn');
+
+      // Reset errors
+      passwordError.style.display = 'none';
+      errorBanner.classList.remove('visible');
+
+      // Validate password match
+      if (newPass && newPass !== confirmPass) {
+        passwordError.style.display = 'block';
+        document.getElementById('inputConfirmPassword').focus();
+        return;
+      }
+
+      // Nothing to update
+      const emailChanged = newEmail && newEmail !== currentUser.email;
+      if (!emailChanged && !newPass) {
+        showToast('No changes to save');
+        return;
+      }
+
+      saveBtn.disabled = true;
+
+      const updates = {};
+      if (emailChanged) updates.email    = newEmail;
+      if (newPass)      updates.password = newPass;
+
+      const { error } = await db.auth.updateUser(updates);
+
+      if (error) {
+        showError(error.message || 'Could not save changes. Please try again.');
+        saveBtn.disabled = false;
+        return;
+      }
+
+      // Clear password fields
+      document.getElementById('inputNewPassword').value    = '';
+      document.getElementById('inputConfirmPassword').value = '';
+
+      saveBtn.disabled = false;
+
+      if (emailChanged) {
+        showToast('Check your new email to confirm the change');
+      } else {
+        showToast('Password updated');
+      }
+    }
+
+    function showError(msg) {
+      const el = document.getElementById('errorBanner');
+      el.textContent = msg;
+      el.classList.add('visible');
     }
 
     function showToast(msg) {
       const toast = document.getElementById('toast');
       toast.textContent = msg;
       toast.classList.add('visible');
-      setTimeout(() => toast.classList.remove('visible'), 2500);
+      setTimeout(() => toast.classList.remove('visible'), 3000);
     }
 
-    function saveChanges() {
-      const newPass = document.getElementById('inputNewPassword').value;
-      const confirm = document.getElementById('inputConfirmPassword').value;
-      const passwordError = document.getElementById('passwordError');
+    function goBack() { window.location.href = 'habit_tracker_profile.html'; }
 
-      // Validate passwords only if any password field is filled
-      if (newPass || confirm) {
-        if (newPass !== confirm) {
-          passwordError.style.display = 'block';
-          document.getElementById('inputConfirmPassword').focus();
-          return;
-        }
-      }
-      passwordError.style.display = 'none';
-
-      // Clear password fields after save
-      document.getElementById('inputCurrentPassword').value = '';
-      document.getElementById('inputNewPassword').value = '';
-      document.getElementById('inputConfirmPassword').value = '';
-
-      showToast('Changes saved');
-    }
+    initApp();
   </script>
 </body>
 </html>

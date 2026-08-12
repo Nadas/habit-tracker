@@ -2,274 +2,170 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Habit Tracker - Profile</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-      background: #0a0a0a;
-      color: #f5f1ed;
+      background: #0a0a0a; color: #f5f1ed; touch-action: manipulation;
     }
-    .container {
-      min-height: 100vh;
-      background: #0a0a0a;
-    }
+    .container { min-height: 100vh; background: #0a0a0a; }
     .header {
-      position: sticky;
-      top: 0;
-      background: #0a0a0a;
-      border-bottom: 1px solid #2a2925;
-      padding: 12px 14px;
-      z-index: 10;
-      display: flex;
-      align-items: center;
-      gap: 10px;
+      position: sticky; top: 0; background: #0a0a0a;
+      border-bottom: 1px solid #2a2925; padding: 12px 14px;
+      z-index: 10; display: flex; align-items: center; gap: 10px;
     }
-    .header button {
-      background: none;
-      border: none;
-      color: #8a8985;
-      cursor: pointer;
-      font-size: 18px;
-      padding: 4px;
-    }
-    .header h1 {
-      font-size: 14px;
-      font-weight: 400;
-      flex: 1;
-      margin: 0;
-    }
-    .content {
-      padding: 12px 14px;
-      max-width: 480px;
-      margin: 0 auto;
-    }
+    .header button { background: none; border: none; color: #8a8985; cursor: pointer; font-size: 18px; padding: 4px; }
+    .header h1 { font-size: 14px; font-weight: 400; flex: 1; margin: 0; }
+    .content { padding: 12px 14px; max-width: 480px; margin: 0 auto; }
     .profile-section {
-      background: #141411;
-      border: 1px solid #2a2925;
-      border-radius: 6px;
-      padding: 20px;
-      text-align: center;
-      margin-bottom: 16px;
+      background: #141411; border: 1px solid #2a2925;
+      border-radius: 6px; padding: 20px; text-align: center; margin-bottom: 16px;
     }
     .profile-avatar {
-      width: 56px;
-      height: 56px;
-      background: #2a2925;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin: 0 auto 12px;
-      color: #8a8985;
+      width: 56px; height: 56px; background: #2a2925; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 12px; color: #8a8985;
     }
-    .profile-name {
-      font-size: 16px;
-      font-weight: 400;
-      margin-bottom: 4px;
-    }
-    .profile-email {
-      font-size: 11px;
-      color: #8a8985;
-      margin-bottom: 16px;
-    }
+    .profile-name { font-size: 16px; font-weight: 400; margin-bottom: 4px; }
+    .profile-email { font-size: 11px; color: #8a8985; margin-bottom: 16px; }
     .profile-stats {
-      display: flex;
-      gap: 12px;
-      margin-top: 16px;
-      padding-top: 16px;
-      border-top: 1px solid #2a2925;
+      display: flex; gap: 12px; margin-top: 16px;
+      padding-top: 16px; border-top: 1px solid #2a2925;
     }
-    .stat {
-      flex: 1;
-      text-align: center;
-    }
-    .stat-value {
-      font-size: 18px;
-      font-weight: 400;
-      color: #d97757;
-    }
-    .stat-label {
-      font-size: 9px;
-      color: #8a8985;
-      margin-top: 4px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
+    .stat { flex: 1; text-align: center; }
+    .stat-value { font-size: 18px; font-weight: 400; color: #d97757; }
+    .stat-label { font-size: 9px; color: #8a8985; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
     .settings-card {
-      background: #141411;
-      border: 1px solid #2a2925;
-      border-radius: 6px;
-      padding: 12px 16px;
-      margin-bottom: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      cursor: pointer;
+      background: #141411; border: 1px solid #2a2925;
+      border-radius: 6px; padding: 12px 16px; margin-bottom: 8px;
+      display: flex; align-items: center; justify-content: space-between; cursor: pointer;
     }
-    .setting-label {
-      font-size: 12px;
-      color: #f5f1ed;
-    }
-    .setting-description {
-      font-size: 10px;
-      color: #8a8985;
-      margin-top: 2px;
-    }
+    .setting-label { font-size: 12px; color: #f5f1ed; }
+    .setting-description { font-size: 10px; color: #8a8985; margin-top: 2px; }
     .toggle-switch {
-      width: 40px;
-      height: 24px;
-      background: #2a2925;
-      border: none;
-      border-radius: 12px;
-      cursor: pointer;
-      position: relative;
-      transition: background 0.2s;
-      flex-shrink: 0;
+      width: 40px; height: 24px; background: #2a2925; border: none;
+      border-radius: 12px; cursor: pointer; position: relative; transition: background 0.2s; flex-shrink: 0;
     }
-    .toggle-switch.on {
-      background: #d97757;
-    }
+    .toggle-switch.on { background: #d97757; }
     .toggle-switch::after {
-      content: '';
-      position: absolute;
-      width: 20px;
-      height: 20px;
-      background: #0a0a0a;
-      border-radius: 50%;
-      top: 2px;
-      left: 2px;
-      transition: left 0.2s;
+      content: ''; position: absolute; width: 20px; height: 20px;
+      background: #0a0a0a; border-radius: 50%; top: 2px; left: 2px; transition: left 0.2s;
     }
-    .toggle-switch.on::after {
-      left: 18px;
-    }
+    .toggle-switch.on::after { left: 18px; }
     .section-title {
-      color: #8a8985;
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-      margin-top: 20px;
-      margin-bottom: 10px;
+      color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px;
+      text-transform: uppercase; margin-top: 20px; margin-bottom: 10px;
     }
     .danger-button {
-      width: 100%;
-      padding: 10px;
-      background: rgba(217, 119, 87, 0.15);
-      border: 1px solid rgba(217, 119, 87, 0.3);
-      border-radius: 4px;
-      color: #d97757;
-      cursor: pointer;
-      font-size: 12px;
-      font-weight: 500;
-      font-family: inherit;
-      transition: all 0.2s;
-      margin-top: 20px;
-      margin-bottom: 40px;
+      width: 100%; padding: 10px;
+      background: rgba(217,119,87,0.15); border: 1px solid rgba(217,119,87,0.3);
+      border-radius: 4px; color: #d97757; cursor: pointer; font-size: 12px;
+      font-weight: 500; font-family: inherit; transition: all 0.2s;
+      margin-top: 20px; margin-bottom: 40px;
     }
-    .danger-button:hover {
-      background: rgba(217, 119, 87, 0.25);
-      border-color: rgba(217, 119, 87, 0.5);
-    }
+    .danger-button:hover { background: rgba(217,119,87,0.25); border-color: rgba(217,119,87,0.5); }
+    .loading-state { text-align: center; padding: 40px; color: #7a7570; font-size: 12px; }
   </style>
 </head>
 <body>
   <div class="container">
-    <!-- Header -->
     <div class="header">
       <button onclick="goBack()">←</button>
       <h1>Profile</h1>
-      <div style="width: 28px;"></div>
+      <div style="width:28px;"></div>
     </div>
 
-    <!-- Content -->
-    <div class="content">
-      <!-- Profile Section -->
-      <div class="profile-section">
-        <div class="profile-avatar">
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="8" r="4"/>
-            <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
-          </svg>
-        </div>
-        <div class="profile-name">Nada</div>
-        <div class="profile-email">nada@example.com</div>
-
-        <div class="profile-stats">
-          <div class="stat">
-            <div class="stat-value">28</div>
-            <div class="stat-label">Days Tracked</div>
-          </div>
-          <div class="stat">
-            <div class="stat-value">15</div>
-            <div class="stat-label">Habits</div>
-          </div>
-          <div class="stat">
-            <div class="stat-value">92%</div>
-            <div class="stat-label">Completion</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Preferences Section -->
-      <div class="section-title">Preferences</div>
-
-      <div class="settings-card" onclick="event.stopPropagation()">
-        <div>
-          <div class="setting-label">Reminders</div>
-          <div class="setting-description">Get daily habit reminders</div>
-        </div>
-        <button class="toggle-switch on" onclick="toggleReminders(this)"></button>
-      </div>
-
-      <div class="settings-card" style="cursor: default;">
-        <div>
-          <div class="setting-label">Dark Theme</div>
-          <div class="setting-description">Always enabled</div>
-        </div>
-        <button class="toggle-switch on" disabled style="opacity: 0.5; cursor: default;"></button>
-      </div>
-
-      <!-- Account Section -->
-      <div class="section-title">Account</div>
-
-      <div class="settings-card" onclick="goToEditProfile()">
-        <div>
-          <div class="setting-label">Edit Profile</div>
-          <div class="setting-description">Update your info and password</div>
-        </div>
-        <span style="color: #8a8985; font-size: 14px;">›</span>
-      </div>
-
-      <!-- Danger Zone -->
-      <button class="danger-button" onclick="logout()">Logout</button>
+    <div class="content" id="content">
+      <div class="loading-state">Loading…</div>
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
   <script>
-    function goBack() {
-      window.location.href = 'habit_tracker_mockup.html';
+    const { createClient } = supabase;
+    const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let currentUser = null;
+
+    async function initApp() {
+      const { data: { session } } = await db.auth.getSession();
+      if (!session) { window.location.href = 'habit_tracker_login.html'; return; }
+      currentUser = session.user;
+
+      // Load habit count for stats
+      const { data: habits } = await db.from('habits')
+        .select('id')
+        .eq('user_id', currentUser.id)
+        .eq('archived', false);
+
+      const habitCount = habits ? habits.length : 0;
+
+      // Derive display name from email (everything before the @)
+      const email = currentUser.email || '';
+      const displayName = currentUser.user_metadata?.full_name
+        || email.split('@')[0]
+        || 'You';
+
+      render(email, displayName, habitCount);
     }
 
-    function goToEditProfile() {
-      window.location.href = 'habit_tracker_edit_profile.html';
+    function render(email, displayName, habitCount) {
+      document.getElementById('content').innerHTML = `
+        <div class="profile-section">
+          <div class="profile-avatar">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="8" r="4"/>
+              <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+            </svg>
+          </div>
+          <div class="profile-name">${escapeHtml(displayName)}</div>
+          <div class="profile-email">${escapeHtml(email)}</div>
+          <div class="profile-stats">
+            <div class="stat">
+              <div class="stat-value">${habitCount}</div>
+              <div class="stat-label">Active Habits</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-title">Preferences</div>
+        <div class="settings-card" style="cursor:default;">
+          <div>
+            <div class="setting-label">Dark Theme</div>
+            <div class="setting-description">Always enabled</div>
+          </div>
+          <button class="toggle-switch on" disabled style="opacity:0.5;cursor:default;"></button>
+        </div>
+
+        <div class="section-title">Account</div>
+        <div class="settings-card" onclick="goToEditProfile()">
+          <div>
+            <div class="setting-label">Edit Profile</div>
+            <div class="setting-description">Update your email or password</div>
+          </div>
+          <span style="color:#8a8985;font-size:14px;">›</span>
+        </div>
+
+        <button class="danger-button" onclick="logout()">Sign Out</button>
+      `;
     }
 
-    function toggleReminders(button) {
-      button.classList.toggle('on');
+    function escapeHtml(str) {
+      return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
-    function logout() {
-      if (confirm('Are you sure you want to logout?')) {
-        window.location.href = 'habit_tracker_login.html';
-      }
+    async function logout() {
+      await db.auth.signOut();
+      window.location.href = 'habit_tracker_login.html';
     }
+
+    function goBack()         { window.location.href = 'habit_tracker_mockup.html'; }
+    function goToEditProfile(){ window.location.href = 'habit_tracker_edit_profile.html'; }
+
+    initApp();
   </script>
 </body>
 </html>

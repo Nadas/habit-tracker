@@ -5,337 +5,389 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Habit Tracker</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
       background: #0a0a0a;
       color: #f5f1ed;
       touch-action: manipulation;
     }
-    .container {
-      min-height: 100vh;
-      background: #0a0a0a;
-    }
-    button {
-      font-family: inherit;
-    }
-    input {
-      font-family: inherit;
-      background: #141411;
-      border: 1px solid #2a2925;
-      color: #f5f1ed;
-      padding: 6px 10px;
-      border-radius: 4px;
-      font-size: 12px;
-    }
+    .container { min-height: 100vh; background: #0a0a0a; }
+    button { font-family: inherit; }
+    input, textarea { font-family: inherit; }
   </style>
 </head>
 <body>
-  <div id="root"></div>
+  <div id="root">
+    <div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#7a7570;font-size:12px;">Loading…</div>
+  </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
   <script>
+    const { createClient } = supabase;
+    const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let currentUser = null;
+
     function dateKey(date) {
       return date.toISOString().split('T')[0];
     }
 
     let state = {
       activeTab: 'daily',
-      selectedDate: new Date(2026, 7, 12), // August 12, 2026 (Wednesday)
-      dailyNotes: {},
-      completedHabits: {
-        'morning-skincare': true,
-        'wakeup-time': '00:00',
-        'turmeric-drink': true,
-        'evening-skincare': true,
-        'evening-vitamins': false,
-        'daily-weight': 65.2,
-        'prayer': true,
-        'horseback-riding': false,
-        'litter-change': true,
-        'water-fountain': false,
-        'cat-grooming': true,
-        'pill-dispenser': false,
-        'weight-loss-med': true,
-        'house-cleaning': false,
-        'hair-mask': true,
-      },
-      prayersCompleted: {
-        fajr: true,
-        dhuhr: true,
-        asr: false,
-        maghrib: false,
-        isha: false,
-      },
-      visibleHabits: [
-        'morning-skincare', 'wakeup-time', 'turmeric-drink',
-        'evening-skincare', 'evening-vitamins', 'daily-weight',
-        'prayer', 'horseback-riding', 'litter-change', 'water-fountain',
-        'cat-grooming', 'pill-dispenser', 'weight-loss-med',
-        'house-cleaning', 'hair-mask'
-      ]
+      selectedDate: new Date(),
+      habits: [],               // habit rows from DB
+      completionsByDate: {},    // { 'YYYY-MM-DD': { habitId: value } }
+      prayersByDate: {},        // { 'YYYY-MM-DD': { fajr, dhuhr, ... } }
+      dailyNotes: {},           // { 'YYYY-MM-DD': string }
+      prayerHabitId: null,
+      weightHabitId: null,
+      weightData: {},           // { 'YYYY-MM-DD': number } for stats
     };
 
-    const habitsMetadata = {
-      'morning-skincare': { label: 'Morning skincare', type: 'yes/no', freq: 'daily', section: 'morning' },
-      'wakeup-time':      { label: 'Wake-up time',     type: 'number',  freq: 'daily', section: 'morning' },
-      'turmeric-drink':   { label: 'Turmeric drink',   type: 'yes/no',  freq: 'daily', section: 'morning' },
-      'daily-weight':     { label: 'Daily weight',     type: 'number',  freq: 'daily', section: 'morning' },
-      'evening-skincare': { label: 'Evening skincare', type: 'yes/no',  freq: 'daily', section: 'evening' },
-      'evening-vitamins': { label: 'Evening vitamins', type: 'yes/no',  freq: 'daily', section: 'evening' },
-      'prayer':           { label: 'Prayers',          type: 'yes/no',  freq: 'daily', section: 'prayer'  },
-      'horseback-riding': { label: 'Horseback riding', type: 'yes/no',  freq: 'weekly', days: [0, 2, 4] },
-      'litter-change':    { label: 'Cat litter',       type: 'yes/no',  freq: 'weekly', days: [6] },
-      'water-fountain':   { label: 'Water fountain',   type: 'yes/no',  freq: 'weekly', days: [6] },
-      'cat-grooming':     { label: 'Cat grooming',     type: 'yes/no',  freq: 'weekly', days: [6] },
-      'pill-dispenser':   { label: 'Pill dispenser refill', type: 'yes/no', freq: 'weekly', days: [6] },
-      'weight-loss-med':  { label: 'Weight loss medication', type: 'yes/no', freq: 'weekly' },
-      'house-cleaning':   { label: 'House cleaning',   type: 'yes/no',  freq: 'weekly' },
-      'hair-mask':        { label: 'Hair mask',        type: 'yes/no',  freq: 'weekly' },
-    };
+    const dayNames   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    // ─── Helpers ───────────────────────────────────────────────────────────────
 
-    function getWeeklyTasksForDay() {
-      const dayOfWeek = state.selectedDate.getDay();
-      const weeklyTasks = [];
-      
-      // Horseback riding: Sunday (0), Tuesday (2), Thursday (4)
-      if ([0, 2, 4].includes(dayOfWeek)) weeklyTasks.push('horseback-riding');
-      
-      // Cat activities: Saturday (6)
-      if (dayOfWeek === 6) {
-        weeklyTasks.push('litter-change', 'water-fountain', 'cat-grooming', 'pill-dispenser');
-      }
-      
-      return weeklyTasks;
+    function getCompletions(date) {
+      return state.completionsByDate[dateKey(date)] || {};
     }
 
-    function setHabit(habitId, value) {
-      // For yes/no habits, toggle between true/false
-      if (typeof value === 'boolean') {
-        state.completedHabits[habitId] = value;
-      } else {
-        // For text inputs (wake-up time), just store the string value
-        state.completedHabits[habitId] = value || null;
-      }
-      render();
+    function getPrayers(date) {
+      return state.prayersByDate[dateKey(date)] || { fajr:false, dhuhr:false, asr:false, maghrib:false, isha:false };
     }
 
-    function setWeight(value) {
-      state.completedHabits['daily-weight'] = value === '' ? null : parseFloat(value);
-      render();
+    function isFutureDate(date) {
+      const today = new Date(); today.setHours(0,0,0,0);
+      const d = new Date(date); d.setHours(0,0,0,0);
+      return d > today;
     }
 
-    function togglePrayer(prayerId) {
-      state.prayersCompleted[prayerId] = !state.prayersCompleted[prayerId];
-      render();
-    }
-
-    function setActiveTab(tab) {
-      state.activeTab = tab;
-      render();
-    }
-
-    function changeDate(days) {
-      const newDate = new Date(state.selectedDate);
-      newDate.setDate(newDate.getDate() + days);
-      state.selectedDate = newDate;
-      render();
-    }
-
-    function changeMonth(months) {
-      const newDate = new Date(state.selectedDate);
-      newDate.setMonth(newDate.getMonth() + months);
-      state.selectedDate = newDate;
-      render();
-    }
-
-    function goToSettings() {
-      window.location.href = 'habit_tracker_manage_habits_mockup.html';
-    }
-
-    function goToProfile() {
-      window.location.href = 'habit_tracker_profile.html';
-    }
-
-    function goToToday() {
-      state.selectedDate = new Date();
-      state.activeTab = 'daily';
-      render();
-    }
-
-    function isFutureDate() {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const selected = new Date(state.selectedDate);
-      selected.setHours(0, 0, 0, 0);
-      return selected > today;
-    }
-
-    function getHabitValue(habitId) {
-      if (isFutureDate()) {
-        const habit = habitsMetadata[habitId];
-        if (habit.type === 'number') return habitId === 'wakeup-time' ? '00:00' : null;
+    function getHabitValue(habitId, date) {
+      if (isFutureDate(date)) {
+        const h = state.habits.find(h => h.id === habitId);
+        if (!h) return false;
+        if (h.type === 'number') return h.unit === 'am' ? '00:00' : null;
         return false;
       }
-      return state.completedHabits[habitId];
+      const v = getCompletions(date)[habitId];
+      return v === undefined ? false : v;
     }
 
-    function renderHabitItem(habitId) {
-      const habit = habitsMetadata[habitId];
-      const value = getHabitValue(habitId);
+    // ─── Data loading ───────────────────────────────────────────────────────────
+
+    function parseCompletionValue(val) {
+      if (val === 'true')  return true;
+      if (val === 'false') return false;
+      return val; // string (wake-up time, weight, etc.)
+    }
+
+    async function loadCompletionsForDate(date) {
+      const key = dateKey(date);
+      // Already cached — skip
+      if (state.completionsByDate[key] !== undefined) return;
+
+      const { data } = await db.from('completions')
+        .select('habit_id, value')
+        .eq('user_id', currentUser.id)
+        .eq('date', key);
+
+      const completions = {};
+      let prayers = { fajr:false, dhuhr:false, asr:false, maghrib:false, isha:false };
+
+      (data || []).forEach(c => {
+        if (c.habit_id === state.prayerHabitId) {
+          try { prayers = JSON.parse(c.value); } catch(e) {}
+        } else {
+          completions[c.habit_id] = parseCompletionValue(c.value);
+        }
+      });
+
+      state.completionsByDate[key] = completions;
+      state.prayersByDate[key]     = prayers;
+    }
+
+    async function loadNoteForDate(date) {
+      const key = dateKey(date);
+      if (state.dailyNotes[key] !== undefined) return;
+
+      const { data } = await db.from('daily_notes')
+        .select('content')
+        .eq('user_id', currentUser.id)
+        .eq('date', key)
+        .maybeSingle();
+
+      state.dailyNotes[key] = data?.content || '';
+    }
+
+    async function loadCompletionsForRange(startDate, endDate) {
+      const startKey = dateKey(startDate);
+      const endKey   = dateKey(endDate);
+
+      const { data } = await db.from('completions')
+        .select('habit_id, date, value')
+        .eq('user_id', currentUser.id)
+        .gte('date', startKey)
+        .lte('date', endKey);
+
+      const byDate  = {};
+      const prayers = {};
+
+      (data || []).forEach(c => {
+        if (!byDate[c.date])  byDate[c.date]  = {};
+        if (!prayers[c.date]) prayers[c.date] = { fajr:false, dhuhr:false, asr:false, maghrib:false, isha:false };
+
+        if (c.habit_id === state.prayerHabitId) {
+          try { prayers[c.date] = JSON.parse(c.value); } catch(e) {}
+        } else {
+          byDate[c.date][c.habit_id] = parseCompletionValue(c.value);
+        }
+      });
+
+      // Fill every day in the range (even days with no completions)
+      let d = new Date(startDate);
+      while (d <= endDate) {
+        const k = dateKey(d);
+        state.completionsByDate[k] = byDate[k]  || {};
+        state.prayersByDate[k]     = prayers[k] || { fajr:false, dhuhr:false, asr:false, maghrib:false, isha:false };
+        d.setDate(d.getDate() + 1);
+      }
+    }
+
+    async function loadWeightForMonth(year, month) {
+      if (!state.weightHabitId) return;
+      const startKey = `${year}-${String(month+1).padStart(2,'0')}-01`;
+      const endKey   = `${year}-${String(month+1).padStart(2,'0')}-31`;
+
+      const { data } = await db.from('completions')
+        .select('date, value')
+        .eq('habit_id', state.weightHabitId)
+        .gte('date', startKey)
+        .lte('date', endKey)
+        .order('date');
+
+      state.weightData = {};
+      (data || []).forEach(c => {
+        const val = parseFloat(c.value);
+        if (!isNaN(val)) state.weightData[c.date] = val;
+      });
+    }
+
+    // ─── Mutations ──────────────────────────────────────────────────────────────
+
+    async function setHabit(habitId, value) {
+      const key = dateKey(state.selectedDate);
+      if (!state.completionsByDate[key]) state.completionsByDate[key] = {};
+      state.completionsByDate[key][habitId] = value;
+      render();
+
+      const valueStr = value === true ? 'true' : value === false ? 'false' : String(value ?? '');
+      await db.from('completions').upsert(
+        { user_id: currentUser.id, habit_id: habitId, date: key, value: valueStr },
+        { onConflict: 'habit_id,date' }
+      );
+    }
+
+    async function togglePrayer(prayerId) {
+      const key = dateKey(state.selectedDate);
+      if (!state.prayersByDate[key]) state.prayersByDate[key] = { fajr:false, dhuhr:false, asr:false, maghrib:false, isha:false };
+      state.prayersByDate[key][prayerId] = !state.prayersByDate[key][prayerId];
+      render();
+
+      if (!state.prayerHabitId) return;
+      await db.from('completions').upsert(
+        { user_id: currentUser.id, habit_id: state.prayerHabitId, date: key, value: JSON.stringify(state.prayersByDate[key]) },
+        { onConflict: 'habit_id,date' }
+      );
+    }
+
+    async function saveNote(value) {
+      const key = dateKey(state.selectedDate);
+      state.dailyNotes[key] = value;
+      await db.from('daily_notes').upsert(
+        { user_id: currentUser.id, date: key, content: value },
+        { onConflict: 'user_id,date' }
+      );
+    }
+
+    // ─── Navigation ─────────────────────────────────────────────────────────────
+
+    async function setActiveTab(tab) {
+      state.activeTab = tab;
+      await loadTabData();
+      render();
+    }
+
+    async function changeDate(days) {
+      const d = new Date(state.selectedDate);
+      d.setDate(d.getDate() + days);
+      state.selectedDate = d;
+      await loadTabData();
+      render();
+    }
+
+    async function changeMonth(months) {
+      const d = new Date(state.selectedDate);
+      d.setMonth(d.getMonth() + months);
+      state.selectedDate = d;
+      await loadTabData();
+      render();
+    }
+
+    async function goToToday() {
+      state.selectedDate = new Date();
+      state.activeTab = 'daily';
+      await loadTabData();
+      render();
+    }
+
+    function goToSettings() { window.location.href = 'habit_tracker_manage_habits_mockup.html'; }
+    function goToProfile()  { window.location.href = 'habit_tracker_profile.html'; }
+
+    async function loadTabData() {
+      const tab  = state.activeTab;
+      const date = state.selectedDate;
+
+      if (tab === 'daily' || tab === 'prayer') {
+        await Promise.all([loadCompletionsForDate(date), loadNoteForDate(date)]);
+      } else if (tab === 'weekly') {
+        const dow   = date.getDay();
+        const start = new Date(date); start.setDate(date.getDate() - dow);
+        const end   = new Date(start); end.setDate(start.getDate() + 6);
+        await loadCompletionsForRange(start, end);
+      } else if (tab === 'monthly') {
+        const start = new Date(date.getFullYear(), date.getMonth(), 1);
+        const end   = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+        await loadCompletionsForRange(start, end);
+      } else if (tab === 'stats') {
+        await loadWeightForMonth(date.getFullYear(), date.getMonth());
+      }
+    }
+
+    // ─── Render helpers ─────────────────────────────────────────────────────────
+
+    function renderHabitItem(habit) {
+      const value = getHabitValue(habit.id, state.selectedDate);
 
       if (habit.type === 'number') {
-        let suffix = '';
-        let placeholder = '';
-        let step = '0.1';
-        if (habitId === 'daily-weight') {
-          suffix = 'kg';
-          placeholder = '0.0';
-        } else if (habitId === 'wakeup-time') {
-          suffix = 'am';
-          placeholder = '00:00';
-          step = 'any';
-        }
-
+        const suffix      = habit.unit || '';
+        const placeholder = habit.unit === 'am' ? '00:00' : '0.0';
         return `
-          <div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: #141411; border-radius: 4px; border: 1px solid #2a2925;">
-            <div style="flex: 1;">
-              <p style="color: #f5f1ed; font-size: 12px; font-weight: 400;">${habit.label}</p>
-            </div>
-            <input type="text" value="${value || ''}" onchange="setHabit('${habitId}', this.value)" placeholder="${placeholder}" style="width: 60px; text-align: right;" />
-            <span style="color: #8a8985; font-size: 11px;">${suffix}</span>
-          </div>
-        `;
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:#141411;border-radius:4px;border:1px solid #2a2925;">
+            <div style="flex:1;"><p style="color:#f5f1ed;font-size:12px;font-weight:400;">${habit.name}</p></div>
+            <input type="text" value="${value || ''}"
+              onchange="setHabit('${habit.id}', this.value)"
+              placeholder="${placeholder}"
+              style="width:60px;text-align:right;background:#0a0a0a;border:1px solid #2a2925;color:#f5f1ed;padding:5px 8px;border-radius:4px;font-size:12px;outline:none;" />
+            <span style="color:#8a8985;font-size:11px;">${suffix}</span>
+          </div>`;
       }
 
       return `
-        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #141411; border-radius: 4px; border: 1px solid #2a2925;">
-          <div style="flex: 1;">
-            <p style="color: #f5f1ed; font-size: 12px; font-weight: 400;">${habit.label}</p>
-          </div>
-          <button onclick="setHabit('${habitId}', false)" style="width: 28px; height: 28px; border-radius: 4px; border: 1px solid #2a2925; background: ${!value ? '#2a2925' : '#141411'}; color: #8a8985; cursor: pointer; font-size: 14px;">✕</button>
-          <button onclick="setHabit('${habitId}', true)" style="width: 28px; height: 28px; border-radius: 4px; border: 1px solid #2a2925; background: ${value ? '#d97757' : '#141411'}; color: ${value ? '#0a0a0a' : '#8a8985'}; cursor: pointer; font-weight: 600;">✓</button>
-        </div>
-      `;
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#141411;border-radius:4px;border:1px solid #2a2925;">
+          <div style="flex:1;"><p style="color:#f5f1ed;font-size:12px;font-weight:400;">${habit.name}</p></div>
+          <button onclick="setHabit('${habit.id}',false)"
+            style="width:28px;height:28px;border-radius:4px;border:1px solid #2a2925;background:${!value?'#2a2925':'#141411'};color:#8a8985;cursor:pointer;font-size:14px;">✕</button>
+          <button onclick="setHabit('${habit.id}',true)"
+            style="width:28px;height:28px;border-radius:4px;border:1px solid #2a2925;background:${value?'#d97757':'#141411'};color:${value?'#0a0a0a':'#8a8985'};cursor:pointer;font-weight:600;">✓</button>
+        </div>`;
     }
 
+    function renderSection(title, habits) {
+      if (!habits.length) return '';
+      return `
+        <div>
+          <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;margin-bottom:6px;text-transform:uppercase;">${title}</p>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            ${habits.map(h => renderHabitItem(h)).join('')}
+          </div>
+        </div>`;
+    }
+
+    // ─── View renderers ──────────────────────────────────────────────────────────
+
     function renderDailyView() {
-      const dayOfWeek = state.selectedDate.getDay();
-      const key = dateKey(state.selectedDate);
+      const dow    = state.selectedDate.getDay();
+      const key    = dateKey(state.selectedDate);
+      const future = isFutureDate(state.selectedDate);
 
-      // Build sections dynamically from habitsMetadata
-      const morningHabits = state.visibleHabits.filter(id => habitsMetadata[id]?.section === 'morning');
-      const eveningHabits = state.visibleHabits.filter(id => habitsMetadata[id]?.section === 'evening');
+      const morningHabits = state.habits.filter(h => h.frequency === 'daily'   && h.section === 'morning');
+      const eveningHabits = [
+        ...state.habits.filter(h => h.frequency === 'daily'  && h.section === 'evening'),
+        ...state.habits.filter(h => h.frequency === 'weekly' && h.days && h.days.includes(dow) && h.section === 'evening'),
+      ];
+      const weeklyHabits = state.habits.filter(h =>
+        h.frequency === 'weekly' && h.days && h.days.includes(dow) && !h.section
+      );
 
-      // Horseback riding appended to evening on Sun/Tue/Thu
-      if ([0, 2, 4].includes(dayOfWeek) && state.visibleHabits.includes('horseback-riding')) {
-        eveningHabits.push('horseback-riding');
-      }
+      const prayers            = getPrayers(state.selectedDate);
+      const allPrayersComplete = !future && Object.values(prayers).every(v => v);
+      const hasPrayerHabit     = !!state.prayerHabitId;
 
-      const prayerHabit = state.visibleHabits.includes('prayer');
-
-      const allPrayersComplete = !isFutureDate() && Object.values(state.prayersCompleted).every(v => v);
-
-      const renderSection = (title, habitIds) => {
-        if (habitIds.length === 0) return '';
-        return `
-          <div>
-            <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 6px; text-transform: uppercase;">${title}</p>
-            <div style="display: flex; flex-direction: column; gap: 6px;">
-              ${habitIds.map(id => renderHabitItem(id)).join('')}
-            </div>
-          </div>`;
-      };
-
-      const prayerRow = prayerHabit ? `
+      const prayerRow = hasPrayerHabit ? `
         <div>
-          <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 6px; text-transform: uppercase;">Prayer</p>
-          <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #141411; border-radius: 4px; border: 1px solid #2a2925;">
-            <div style="flex: 1;"><p style="color: #f5f1ed; font-size: 12px; font-weight: 400;">Prayers</p></div>
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <div style="width: 6px; height: 6px; border-radius: 50%; background: ${allPrayersComplete ? '#d97757' : '#444441'};"></div>
-              <span style="color: #8a8985; font-size: 11px;">${allPrayersComplete ? 'Complete' : 'Incomplete'}</span>
+          <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;margin-bottom:6px;text-transform:uppercase;">Prayer</p>
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#141411;border-radius:4px;border:1px solid #2a2925;">
+            <div style="flex:1;"><p style="color:#f5f1ed;font-size:12px;font-weight:400;">Prayers</p></div>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <div style="width:6px;height:6px;border-radius:50%;background:${allPrayersComplete?'#d97757':'#444441'};"></div>
+              <span style="color:#8a8985;font-size:11px;">${allPrayersComplete?'Complete':'Incomplete'}</span>
             </div>
           </div>
         </div>` : '';
 
-      // Saturday weekly cat tasks
-      const weeklyRow = dayOfWeek === 6 ? `
-        <div>
-          <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 6px; text-transform: uppercase;">Weekly</p>
-          <div style="display: flex; flex-direction: column; gap: 6px;">
-            ${['litter-change', 'water-fountain', 'cat-grooming', 'pill-dispenser'].map(id => renderHabitItem(id)).join('')}
-          </div>
-        </div>` : '';
-
-      // Notes box
       const savedNote = state.dailyNotes[key] || '';
-      const notesRow = `
+      const notesRow  = `
         <div>
-          <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 6px; text-transform: uppercase;">Notes</p>
-          <textarea
-            id="dailyNotesInput"
-            onchange="saveNote(this.value)"
-            placeholder="Add a note for today…"
-            style="width: 100%; background: #141411; border: 1px solid #2a2925; color: #f5f1ed; border-radius: 4px; padding: 9px 12px; font-size: 12px; font-family: inherit; resize: none; min-height: 72px; outline: none; transition: border-color 0.2s;"
-            onfocus="this.style.borderColor='#d97757'"
-            onblur="this.style.borderColor='#2a2925'"
+          <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;margin-bottom:6px;text-transform:uppercase;">Notes</p>
+          <textarea onchange="saveNote(this.value)" placeholder="Add a note for today…"
+            style="width:100%;background:#141411;border:1px solid #2a2925;color:#f5f1ed;border-radius:4px;padding:9px 12px;font-size:12px;font-family:inherit;resize:none;min-height:72px;outline:none;transition:border-color 0.2s;"
+            onfocus="this.style.borderColor='#d97757'" onblur="this.style.borderColor='#2a2925'"
           >${savedNote}</textarea>
         </div>`;
 
-      return `<div style="display: flex; flex-direction: column; gap: 12px;">
+      return `<div style="display:flex;flex-direction:column;gap:12px;">
         ${renderSection('Morning', morningHabits)}
         ${renderSection('Evening', eveningHabits)}
         ${prayerRow}
-        ${weeklyRow}
+        ${weeklyHabits.length ? renderSection('Weekly', weeklyHabits) : ''}
         ${notesRow}
       </div>`;
     }
 
-    function saveNote(value) {
-      const key = dateKey(state.selectedDate);
-      state.dailyNotes[key] = value;
-    }
-
     function renderPrayerView() {
-      const prayers = [
-        { id: 'fajr', label: 'Fajr' },
-        { id: 'dhuhr', label: 'Dhuhr' },
-        { id: 'asr', label: 'Asr' },
-        { id: 'maghrib', label: 'Maghrib' },
-        { id: 'isha', label: 'Isha' },
+      const prayerList = [
+        { id:'fajr',    label:'Fajr'    },
+        { id:'dhuhr',   label:'Dhuhr'   },
+        { id:'asr',     label:'Asr'     },
+        { id:'maghrib', label:'Maghrib' },
+        { id:'isha',    label:'Isha'    },
       ];
-
-      const allComplete = !isFutureDate() && Object.values(state.prayersCompleted).every(v => v);
+      const prayers    = getPrayers(state.selectedDate);
+      const future     = isFutureDate(state.selectedDate);
+      const allComplete = !future && Object.values(prayers).every(v => v);
 
       let html = `
-        <div style="display: flex; flex-direction: column; gap: 10px;">
-          <div style="margin-bottom: 4px;">
-            <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 6px;">Prayers</p>
-            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #141411; border-radius: 4px; border: 1px solid #2a2925;">
-              <div style="width: 6px; height: 6px; border-radius: 50%; background: ${allComplete ? '#d97757' : '#444441'};"></div>
-              <p style="color: #f5f1ed; font-size: 12px; font-weight: 400;">${allComplete ? 'Complete' : 'Incomplete'}</p>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="margin-bottom:4px;">
+            <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:6px;">Status</p>
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#141411;border-radius:4px;border:1px solid #2a2925;">
+              <div style="width:6px;height:6px;border-radius:50%;background:${allComplete?'#d97757':'#444441'};"></div>
+              <p style="color:#f5f1ed;font-size:12px;font-weight:400;">${allComplete?'Complete':'Incomplete'}</p>
             </div>
           </div>
-          <div style="display: flex; flex-direction: column; gap: 6px;">
-      `;
+          <div style="display:flex;flex-direction:column;gap:6px;">`;
 
-      prayers.forEach(prayer => {
-        const isCompleted = !isFutureDate() && state.prayersCompleted[prayer.id];
+      prayerList.forEach(p => {
+        const done = !future && prayers[p.id];
         html += `
-          <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #141411; border-radius: 4px; border: 1px solid #2a2925;">
-            <div style="flex: 1;">
-              <p style="color: #f5f1ed; font-size: 12px; font-weight: 400;">${prayer.label}</p>
-            </div>
-            <button onclick="togglePrayer('${prayer.id}')" style="width: 28px; height: 28px; border-radius: 4px; border: 1px solid #2a2925; background: ${isCompleted ? '#d97757' : '#141411'}; color: ${isCompleted ? '#0a0a0a' : '#8a8985'}; cursor: pointer; font-weight: 600;">✓</button>
-          </div>
-        `;
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#141411;border-radius:4px;border:1px solid #2a2925;">
+            <div style="flex:1;"><p style="color:#f5f1ed;font-size:12px;font-weight:400;">${p.label}</p></div>
+            <button onclick="togglePrayer('${p.id}')"
+              style="width:28px;height:28px;border-radius:4px;border:1px solid #2a2925;background:${done?'#d97757':'#141411'};color:${done?'#0a0a0a':'#8a8985'};cursor:pointer;font-weight:600;">✓</button>
+          </div>`;
       });
 
       html += `</div></div>`;
@@ -343,398 +395,317 @@
     }
 
     function renderWeeklyView() {
-      // Get start of week (Sunday) for the selected date
-      const selected = new Date(state.selectedDate);
-      const dayOfWeek = selected.getDay();
-      const startOfWeek = new Date(selected);
-      startOfWeek.setDate(selected.getDate() - dayOfWeek);
+      const dow        = state.selectedDate.getDay();
+      const startOfWeek = new Date(state.selectedDate);
+      startOfWeek.setDate(state.selectedDate.getDate() - dow);
 
-      const allHabits = state.visibleHabits;
-      const mockData = {};
-      allHabits.forEach(h => {
-        mockData[h] = Array.from({length: 7}, () => Math.random() > 0.4 ? 1 : 0);
-      });
+      const dailyHabits = state.habits.filter(h => h.frequency === 'daily' && h.id !== state.prayerHabitId);
+      const dayShortNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
       let html = `
-        <div style="display: flex; flex-direction: column; gap: 10px;">
-          <div>
-            <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 6px;">Week of ${monthNames[startOfWeek.getMonth()]} ${startOfWeek.getDate()}</p>
-          </div>
-          <div style="background: #141411; border-radius: 6px; border: 1px solid #2a2925; padding: 8px; overflow-x: auto;">
-            <table style="width: auto; min-width: 100%; border-collapse: collapse; font-size: 10px;">
-              <thead>
-                <tr>
-                  <th style="width: 20px; padding-right: 4px; text-align: left;"></th>
-      `;
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;">
+            Week of ${monthNames[startOfWeek.getMonth()]} ${startOfWeek.getDate()}
+          </p>
+          <div style="background:#141411;border-radius:6px;border:1px solid #2a2925;padding:8px;overflow-x:auto;">
+            <table style="width:auto;min-width:100%;border-collapse:collapse;font-size:10px;">
+              <thead><tr><th style="width:28px;padding-right:4px;"></th>`;
 
-      allHabits.forEach(habitId => {
-        const label = habitsMetadata[habitId].label;
-        html += `<th style="padding: 4px 2px; text-align: left; width: 24px; height: 100px;"><p style="color: #f5f1ed; font-weight: 400; font-size: 9px; writing-mode: vertical-rl; transform: rotate(180deg); display: flex; align-items: flex-end; justify-content: flex-start; height: 100%; white-space: nowrap;">${label}</p></th>`;
+      dailyHabits.forEach(h => {
+        html += `<th style="padding:4px 2px;width:24px;height:100px;">
+          <p style="color:#f5f1ed;font-weight:400;font-size:9px;writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;">${h.name}</p>
+        </th>`;
       });
 
       html += `</tr></thead><tbody>`;
 
-      const dayShortNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-      
-      for (let dayIdx = 0; dayIdx < 7; dayIdx++) {
-        const dayDate = new Date(startOfWeek);
-        dayDate.setDate(startOfWeek.getDate() + dayIdx);
-        const dayLabel = dayShortNames[dayDate.getDay()];
-        
-        html += `<tr style="border-top: 1px solid #2a2925;">
-          <td style="padding: 3px 4px; text-align: right; color: #7a7570; font-size: 9px; font-weight: 600;">${dayLabel}</td>`;
+      for (let i = 0; i < 7; i++) {
+        const d  = new Date(startOfWeek); d.setDate(startOfWeek.getDate() + i);
+        const k  = dateKey(d);
+        const cs = state.completionsByDate[k] || {};
 
-        allHabits.forEach(habitId => {
-          const completed = mockData[habitId][dayIdx];
-          const bg = completed ? '#d97757' : '#2a2925';
-          html += `<td style="padding: 3px 2px; text-align: center;"><div style="width: 10px; height: 10px; border-radius: 2px; background: ${bg}; opacity: ${completed ? 1 : 0.4}; margin: 0 auto;"></div></td>`;
+        html += `<tr style="border-top:1px solid #2a2925;">
+          <td style="padding:3px 4px;text-align:right;color:#7a7570;font-size:9px;font-weight:600;">${dayShortNames[d.getDay()]}</td>`;
+
+        dailyHabits.forEach(h => {
+          const val  = cs[h.id];
+          const done = val === true || val === 'true';
+          html += `<td style="padding:3px 2px;text-align:center;">
+            <div style="width:10px;height:10px;border-radius:2px;background:${done?'#d97757':'#2a2925'};opacity:${done?1:0.4};margin:0 auto;"></div>
+          </td>`;
         });
 
         html += `</tr>`;
       }
 
-      html += `</tbody></table></div>`;
-      html += `</div>`;
+      html += `</tbody></table></div></div>`;
       return html;
     }
 
     function renderMonthlyView() {
-      const allHabits = state.visibleHabits;
-      const mockData = {};
-      allHabits.forEach(h => {
-        mockData[h] = Array.from({length: 31}, () => Math.random() > 0.4 ? 1 : 0);
-      });
+      const year        = state.selectedDate.getFullYear();
+      const month       = state.selectedDate.getMonth();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const dailyHabits = state.habits.filter(h => h.frequency === 'daily' && h.id !== state.prayerHabitId);
 
       let html = `
-        <div style="display: flex; flex-direction: column; gap: 10px;">
-          <div>
-            <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 6px;">August 2026</p>
-          </div>
-          <div style="background: #141411; border-radius: 6px; border: 1px solid #2a2925; padding: 8px; overflow-x: auto;">
-            <table style="width: auto; min-width: 100%; border-collapse: collapse; font-size: 10px;">
-              <thead>
-                <tr>
-                  <th style="width: 20px; padding-right: 4px; text-align: left;"></th>
-      `;
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;">
+            ${monthNames[month]} ${year}
+          </p>
+          <div style="background:#141411;border-radius:6px;border:1px solid #2a2925;padding:8px;overflow-x:auto;">
+            <table style="width:auto;min-width:100%;border-collapse:collapse;font-size:10px;">
+              <thead><tr><th style="width:28px;padding-right:4px;"></th>`;
 
-      allHabits.forEach(habitId => {
-        const label = habitsMetadata[habitId].label;
-        html += `<th style="padding: 4px 2px; text-align: left; width: 24px; height: 100px;"><p style="color: #f5f1ed; font-weight: 400; font-size: 9px; writing-mode: vertical-rl; transform: rotate(180deg); display: flex; align-items: flex-end; justify-content: flex-start; height: 100%; white-space: nowrap;">${label}</p></th>`;
+      dailyHabits.forEach(h => {
+        html += `<th style="padding:4px 2px;width:24px;height:100px;">
+          <p style="color:#f5f1ed;font-weight:400;font-size:9px;writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;">${h.name}</p>
+        </th>`;
       });
 
       html += `</tr></thead><tbody>`;
 
-      for (let dayIdx = 0; dayIdx < 31; dayIdx++) {
-        html += `<tr style="border-top: 1px solid #2a2925;">
-          <td style="padding: 3px 4px; text-align: right; color: #7a7570; font-size: 9px; font-weight: 600;">${dayIdx + 1}</td>`;
+      for (let day = 1; day <= daysInMonth; day++) {
+        const k  = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+        const cs = state.completionsByDate[k] || {};
 
-        allHabits.forEach(habitId => {
-          const completed = mockData[habitId][dayIdx];
-          const bg = completed ? '#d97757' : '#2a2925';
-          html += `<td style="padding: 3px 2px; text-align: center;"><div style="width: 10px; height: 10px; border-radius: 2px; background: ${bg}; opacity: ${completed ? 1 : 0.4}; margin: 0 auto;"></div></td>`;
+        html += `<tr style="border-top:1px solid #2a2925;">
+          <td style="padding:3px 4px;text-align:right;color:#7a7570;font-size:9px;font-weight:600;">${day}</td>`;
+
+        dailyHabits.forEach(h => {
+          const val  = cs[h.id];
+          const done = val === true || val === 'true';
+          html += `<td style="padding:3px 2px;text-align:center;">
+            <div style="width:10px;height:10px;border-radius:2px;background:${done?'#d97757':'#2a2925'};opacity:${done?1:0.4};margin:0 auto;"></div>
+          </td>`;
         });
 
         html += `</tr>`;
       }
 
-      html += `</tbody></table></div>`;
-      html += `</div>`;
+      html += `</tbody></table></div></div>`;
       return html;
     }
 
     function renderStatsView() {
-      // Mock weight data for the entire month (30 days)
-      const monthData = [
-        { date: '1', weight: 68.5 },
-        { date: '2', weight: 68.3 },
-        { date: '3', weight: 68.1 },
-        { date: '4', weight: 68.2 },
-        { date: '5', weight: 67.9 },
-        { date: '6', weight: 67.8 },
-        { date: '7', weight: 67.6 },
-        { date: '8', weight: 67.5 },
-        { date: '9', weight: 67.4 },
-        { date: '10', weight: 67.3 },
-        { date: '11', weight: 67.2 },
-        { date: '12', weight: 67.1 },
-        { date: '13', weight: 66.9 },
-        { date: '14', weight: 66.8 },
-        { date: '15', weight: 66.7 },
-        { date: '16', weight: 66.6 },
-        { date: '17', weight: 66.5 },
-        { date: '18', weight: 66.4 },
-        { date: '19', weight: 66.2 },
-        { date: '20', weight: 66.1 },
-        { date: '21', weight: 66.0 },
-        { date: '22', weight: 65.9 },
-        { date: '23', weight: 65.8 },
-        { date: '24', weight: 65.7 },
-        { date: '25', weight: 65.6 },
-        { date: '26', weight: 65.5 },
-        { date: '27', weight: 65.4 },
-        { date: '28', weight: 65.3 },
-        { date: '29', weight: 65.2 },
-        { date: '30', weight: 65.2 },
-      ];
+      const year  = state.selectedDate.getFullYear();
+      const month = state.selectedDate.getMonth();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-      const startWeight = 68.5;
-      const currentWeight = 65.2;
-      const goalWeight = 63.0;
-      const weightLost = startWeight - currentWeight;
+      // Build ordered weight entries for the month
+      const monthData = [];
+      for (let d = 1; d <= daysInMonth; d++) {
+        const k = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        if (state.weightData[k] !== undefined) {
+          monthData.push({ date: String(d), weight: state.weightData[k] });
+        }
+      }
+
+      if (monthData.length === 0) {
+        return `<div style="text-align:center;padding:40px 20px;color:#7a7570;font-size:12px;">No weight data logged yet for ${monthNames[month]} ${year}.</div>`;
+      }
+
+      const weights      = monthData.map(d => d.weight);
+      const startWeight  = weights[0];
+      const currentWeight = weights[weights.length - 1];
+      const goalWeight   = 63.0;
+      const weightLost   = startWeight - currentWeight;
       const weightToGoal = currentWeight - goalWeight;
 
-      // Calculate line chart SVG with axes
-      const chartWidth = 420;
-      const chartHeight = 200;
-      const paddingLeft = 40;
-      const paddingRight = 20;
-      const paddingTop = 20;
-      const paddingBottom = 40;
-      const innerWidth = chartWidth - paddingLeft - paddingRight;
-      const innerHeight = chartHeight - paddingTop - paddingBottom;
+      const chartWidth   = 420, chartHeight = 200;
+      const pL = 40, pR = 20, pT = 20, pB = 40;
+      const iW = chartWidth - pL - pR;
+      const iH = chartHeight - pT - pB;
 
-      const minWeight = Math.min(...monthData.map(d => d.weight));
-      const maxWeight = Math.max(...monthData.map(d => d.weight));
-      const range = maxWeight - minWeight || 1;
+      const minW  = Math.min(...weights);
+      const maxW  = Math.max(...weights);
+      const range = maxW - minW || 1;
 
-      // Generate SVG points for line
       let points = '';
-      monthData.forEach((entry, idx) => {
-        const x = paddingLeft + (idx / (monthData.length - 1)) * innerWidth;
-        const y = paddingTop + innerHeight - ((entry.weight - minWeight) / range) * innerHeight;
+      monthData.forEach((e, i) => {
+        const x = pL + (i / (monthData.length - 1)) * iW;
+        const y = pT + iH - ((e.weight - minW) / range) * iH;
         points += `${x},${y} `;
       });
 
-      // Generate Y-axis labels
-      const yAxisSteps = 5;
-      let yAxisLines = '';
-      let yAxisLabels = '';
-      for (let i = 0; i <= yAxisSteps; i++) {
-        const value = minWeight + (range / yAxisSteps) * i;
-        const y = paddingTop + innerHeight - (i / yAxisSteps) * innerHeight;
-        yAxisLines += `<line x1="${paddingLeft}" y1="${y}" x2="${chartWidth - paddingRight}" y2="${y}" stroke="#2a2925" stroke-width="0.5" opacity="0.3"/>`;
-        yAxisLabels += `<text x="${paddingLeft - 8}" y="${y + 3}" font-size="8" fill="#8a8985" text-anchor="end">${value.toFixed(1)}</text>`;
+      let yLines = '', yLabels = '';
+      for (let i = 0; i <= 5; i++) {
+        const val = minW + (range / 5) * i;
+        const y   = pT + iH - (i / 5) * iH;
+        yLines  += `<line x1="${pL}" y1="${y}" x2="${chartWidth-pR}" y2="${y}" stroke="#2a2925" stroke-width="0.5" opacity="0.5"/>`;
+        yLabels += `<text x="${pL-6}" y="${y+3}" font-size="8" fill="#8a8985" text-anchor="end">${val.toFixed(1)}</text>`;
       }
 
-      // Generate X-axis labels (show every 5 days)
-      let xAxisLabels = '';
+      let xLabels = '';
       for (let i = 0; i < monthData.length; i += 5) {
-        const x = paddingLeft + (i / (monthData.length - 1)) * innerWidth;
-        xAxisLabels += `<text x="${x}" y="${paddingTop + innerHeight + 16}" font-size="9" fill="#8a8985" text-anchor="middle">${monthData[i].date}</text>`;
+        const x = pL + (i / (monthData.length - 1)) * iW;
+        xLabels += `<text x="${x}" y="${pT+iH+16}" font-size="9" fill="#8a8985" text-anchor="middle">${monthData[i].date}</text>`;
       }
-      // Also show last day
-      const lastX = paddingLeft + innerWidth;
-      xAxisLabels += `<text x="${lastX}" y="${paddingTop + innerHeight + 16}" font-size="9" fill="#8a8985" text-anchor="middle">${monthData[monthData.length - 1].date}</text>`;
+      const lastX = pL + iW;
+      xLabels += `<text x="${lastX}" y="${pT+iH+16}" font-size="9" fill="#8a8985" text-anchor="middle">${monthData[monthData.length-1].date}</text>`;
 
-      const lineChart = `
-        <svg viewBox="0 0 ${chartWidth} ${chartHeight}" style="width: 100%; height: 240px;">
-          <!-- Y-axis grid lines -->
-          ${yAxisLines}
-          
-          <!-- Y-axis -->
-          <line x1="${paddingLeft}" y1="${paddingTop}" x2="${paddingLeft}" y2="${paddingTop + innerHeight}" stroke="#8a8985" stroke-width="1"/>
-          
-          <!-- X-axis -->
-          <line x1="${paddingLeft}" y1="${paddingTop + innerHeight}" x2="${chartWidth - paddingRight}" y2="${paddingTop + innerHeight}" stroke="#8a8985" stroke-width="1"/>
-          
-          <!-- Y-axis labels (weight in kg) -->
-          ${yAxisLabels}
-          
-          <!-- X-axis labels (days) -->
-          ${xAxisLabels}
-          
-          <!-- Trend line -->
-          <polyline points="${points}" fill="none" stroke="#d97757" stroke-width="2" opacity="0.9"/>
-          
-          <!-- Data points -->
-          ${monthData.map((entry, idx) => {
-            const x = paddingLeft + (idx / (monthData.length - 1)) * innerWidth;
-            const y = paddingTop + innerHeight - ((entry.weight - minWeight) / range) * innerHeight;
-            return `<circle cx="${x}" cy="${y}" r="1.5" fill="#d97757" opacity="0.8"/>`;
-          }).join('')}
-        </svg>
-      `;
+      const dots = monthData.map((e, i) => {
+        const x = pL + (i / (monthData.length - 1)) * iW;
+        const y = pT + iH - ((e.weight - minW) / range) * iH;
+        return `<circle cx="${x}" cy="${y}" r="1.5" fill="#d97757" opacity="0.8"/>`;
+      }).join('');
 
-      let html = `
-        <div style="display: flex; flex-direction: column; gap: 16px;">
-          <!-- Top Row: Weight Loss & Current Weight Side by Side -->
-          <div style="display: flex; gap: 12px;">
-            <!-- Weight Loss Progress -->
-            <div style="flex: 1; background: #141411; border: 1px solid #2a2925; border-radius: 6px; padding: 16px;">
-              <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 8px;">Weight Lost</p>
-              <p style="color: #f5f1ed; font-size: 24px; font-weight: 400; margin-bottom: 4px;">${weightLost.toFixed(1)} kg</p>
-              <div style="color: #8a8985; font-size: 11px;">
+      return `
+        <div style="display:flex;flex-direction:column;gap:16px;">
+          <div style="display:flex;gap:12px;">
+            <div style="flex:1;background:#141411;border:1px solid #2a2925;border-radius:6px;padding:16px;">
+              <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:8px;">Weight Lost</p>
+              <p style="color:#f5f1ed;font-size:24px;font-weight:400;margin-bottom:4px;">${Math.abs(weightLost).toFixed(1)} kg</p>
+              <div style="color:#8a8985;font-size:11px;">
                 <div>Started: ${startWeight.toFixed(1)} kg</div>
-                <div style="color: #d97757; margin-top: 4px;">↓ ${((weightLost / startWeight) * 100).toFixed(1)}%</div>
+                <div style="color:#d97757;margin-top:4px;">↓ ${((Math.abs(weightLost)/startWeight)*100).toFixed(1)}%</div>
               </div>
             </div>
-
-            <!-- Current Weight -->
-            <div style="flex: 1; background: #141411; border: 1px solid #2a2925; border-radius: 6px; padding: 16px;">
-              <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 8px;">Current Weight</p>
-              <p style="color: #f5f1ed; font-size: 24px; font-weight: 400; margin-bottom: 4px;">${currentWeight.toFixed(1)} kg</p>
-              <div style="color: #8a8985; font-size: 11px;">
+            <div style="flex:1;background:#141411;border:1px solid #2a2925;border-radius:6px;padding:16px;">
+              <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:8px;">Current Weight</p>
+              <p style="color:#f5f1ed;font-size:24px;font-weight:400;margin-bottom:4px;">${currentWeight.toFixed(1)} kg</p>
+              <div style="color:#8a8985;font-size:11px;">
                 <div>Goal: ${goalWeight.toFixed(1)} kg</div>
-                <div style="margin-top: 4px;">${Math.abs(weightToGoal).toFixed(1)} kg to go</div>
+                <div style="margin-top:4px;">${Math.abs(weightToGoal).toFixed(1)} kg to go</div>
               </div>
             </div>
           </div>
 
-          <!-- Insight -->
-          <div style="background: rgba(217, 119, 87, 0.1); border: 1px solid rgba(217, 119, 87, 0.2); border-radius: 4px; padding: 12px; font-size: 11px; color: #d97757;">
-            💪 Great progress! You've lost ${weightLost.toFixed(1)} kg this month. Keep up the consistent habit tracking!
+          <div style="background:#141411;border:1px solid #2a2925;border-radius:6px;padding:16px;">
+            <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:16px;">
+              Weight Trend — ${monthNames[month]} ${year}
+            </p>
+            <svg viewBox="0 0 ${chartWidth} ${chartHeight}" style="width:100%;height:200px;">
+              ${yLines}
+              <line x1="${pL}" y1="${pT}" x2="${pL}" y2="${pT+iH}" stroke="#8a8985" stroke-width="1"/>
+              <line x1="${pL}" y1="${pT+iH}" x2="${chartWidth-pR}" y2="${pT+iH}" stroke="#8a8985" stroke-width="1"/>
+              ${yLabels}
+              ${xLabels}
+              <polyline points="${points}" fill="none" stroke="#d97757" stroke-width="2" opacity="0.9"/>
+              ${dots}
+            </svg>
           </div>
-
-          <!-- Weight Trend Line Chart -->
-          <div style="background: #141411; border: 1px solid #2a2925; border-radius: 6px; padding: 16px;">
-            <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 16px;">Weight Trend (${monthNames[state.selectedDate.getMonth()]} ${state.selectedDate.getFullYear()})</p>
-            ${lineChart}
-          </div>
-        </div>
-      `;
-
-      return html;
+        </div>`;
     }
 
+    // ─── Main render ─────────────────────────────────────────────────────────────
+
     function render() {
-      const tabs = ['daily', 'prayer', 'weekly', 'monthly', 'stats'];
-      const tabLabels = { daily: 'Today', prayer: 'Prayers', weekly: 'Week', monthly: 'Month', stats: 'Stats' };
+      const tabs      = ['daily','prayer','weekly','monthly','stats'];
+      const tabLabels = { daily:'Today', prayer:'Prayers', weekly:'Week', monthly:'Month', stats:'Stats' };
 
       let tabNav = '';
-      tabs.forEach((tab, idx) => {
-        const isActive = state.activeTab === tab;
-        const borderColor = isActive ? ' #d97757' : ' transparent';
-        const color = isActive ? '#f5f1ed' : '#7a7570';
-        
-        // Add large gap before stats tab to push it right
-        const marginStyle = tab === 'stats' ? 'margin-left: auto;' : '';
-        
+      tabs.forEach(tab => {
+        const active  = state.activeTab === tab;
+        const color   = active ? '#f5f1ed' : '#7a7570';
+        const border  = active ? '2px solid #d97757' : '2px solid transparent';
+        const margin  = tab === 'stats' ? 'margin-left:auto;' : '';
         tabNav += `
-          <button onclick="setActiveTab('${tab}')" style="padding: 6px 0; font-size: 11px; font-weight: 400; border-bottom: 2px solid${borderColor}; background: none; border: none; cursor: pointer; color: ${color}; transition: color 0.2s; ${marginStyle}">
+          <button onclick="setActiveTab('${tab}')"
+            style="padding:6px 0;font-size:11px;background:none;border:none;border-bottom:${border};cursor:pointer;color:${color};${margin}">
             ${tabLabels[tab]}
-          </button>
-        `;
+          </button>`;
       });
 
-      // Date formatting
+      // Date nav bar
       let dateNavHtml = '';
-      if (state.activeTab === 'stats') {
-        // Show month navigation for stats view too
-        const monthDisplay = monthNames[state.selectedDate.getMonth()] + ' ' + state.selectedDate.getFullYear();
+      if (state.activeTab === 'stats' || state.activeTab === 'monthly') {
+        const label = `${monthNames[state.selectedDate.getMonth()]} ${state.selectedDate.getFullYear()}`;
         dateNavHtml = `
-          <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid #2a2925;">
-            <button onclick="changeMonth(-1)" style="background: none; border: none; color: #8a8985; cursor: pointer; font-size: 18px; padding: 4px 8px; display: flex; align-items: center;">‹</button>
-            <div style="text-align: center;">
-              <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 2px;">
-                ${monthDisplay}
-              </p>
-            </div>
-            <button onclick="changeMonth(1)" style="background: none; border: none; color: #8a8985; cursor: pointer; font-size: 18px; padding: 4px 8px; display: flex; align-items: center;">›</button>
-          </div>
-        `;
-      } else if (state.activeTab === 'monthly') {
-        // Month navigation for monthly view
-        const monthDisplay = monthNames[state.selectedDate.getMonth()] + ' ' + state.selectedDate.getFullYear();
-        dateNavHtml = `
-          <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid #2a2925;">
-            <button onclick="changeMonth(-1)" style="background: none; border: none; color: #8a8985; cursor: pointer; font-size: 18px; padding: 4px 8px; display: flex; align-items: center;">‹</button>
-            <div style="text-align: center;">
-              <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 2px;">
-                ${monthDisplay}
-              </p>
-            </div>
-            <button onclick="changeMonth(1)" style="background: none; border: none; color: #8a8985; cursor: pointer; font-size: 18px; padding: 4px 8px; display: flex; align-items: center;">›</button>
-          </div>
-        `;
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #2a2925;">
+            <button onclick="changeMonth(-1)" style="background:none;border:none;color:#8a8985;cursor:pointer;font-size:18px;padding:4px 8px;">‹</button>
+            <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;">${label}</p>
+            <button onclick="changeMonth(1)"  style="background:none;border:none;color:#8a8985;cursor:pointer;font-size:18px;padding:4px 8px;">›</button>
+          </div>`;
       } else if (state.activeTab === 'weekly') {
-        // Week navigation
-        const dayOfWeek = state.selectedDate.getDay();
-        const startOfWeek = new Date(state.selectedDate);
-        startOfWeek.setDate(state.selectedDate.getDate() - dayOfWeek);
-        const endOfWeek = new Date(startOfWeek);
-        endOfWeek.setDate(startOfWeek.getDate() + 6);
-        const weekDisplay = monthNames[startOfWeek.getMonth()] + ' ' + startOfWeek.getDate() + ' - ' + monthNames[endOfWeek.getMonth()] + ' ' + endOfWeek.getDate();
+        const dow  = state.selectedDate.getDay();
+        const s    = new Date(state.selectedDate); s.setDate(s.getDate() - dow);
+        const e    = new Date(s); e.setDate(s.getDate() + 6);
+        const label = `${monthNames[s.getMonth()]} ${s.getDate()} – ${monthNames[e.getMonth()]} ${e.getDate()}`;
         dateNavHtml = `
-          <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid #2a2925;">
-            <button onclick="changeDate(-7)" style="background: none; border: none; color: #8a8985; cursor: pointer; font-size: 18px; padding: 4px 8px; display: flex; align-items: center;">‹</button>
-            <div style="text-align: center;">
-              <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 2px;">
-                ${weekDisplay}
-              </p>
-            </div>
-            <button onclick="changeDate(7)" style="background: none; border: none; color: #8a8985; cursor: pointer; font-size: 18px; padding: 4px 8px; display: flex; align-items: center;">›</button>
-          </div>
-        `;
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #2a2925;">
+            <button onclick="changeDate(-7)" style="background:none;border:none;color:#8a8985;cursor:pointer;font-size:18px;padding:4px 8px;">‹</button>
+            <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;">${label}</p>
+            <button onclick="changeDate(7)"  style="background:none;border:none;color:#8a8985;cursor:pointer;font-size:18px;padding:4px 8px;">›</button>
+          </div>`;
       } else {
-        // Day navigation for daily/prayer views
         const isToday = new Date().toDateString() === state.selectedDate.toDateString();
+        const label   = isToday
+          ? 'Today'
+          : `${dayNames[state.selectedDate.getDay()]}, ${monthNames[state.selectedDate.getMonth()]} ${state.selectedDate.getDate()}`;
         dateNavHtml = `
-          <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid #2a2925;">
-            <button onclick="changeDate(-1)" style="background: none; border: none; color: #8a8985; cursor: pointer; font-size: 18px; padding: 4px 8px; display: flex; align-items: center;">‹</button>
-            <div style="text-align: center;">
-              <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 2px;">
-                ${isToday ? 'Today' : dayNames[state.selectedDate.getDay()] + ', ' + monthNames[state.selectedDate.getMonth()] + ' ' + state.selectedDate.getDate()}
-              </p>
-            </div>
-            <button onclick="changeDate(1)" style="background: none; border: none; color: #8a8985; cursor: pointer; font-size: 18px; padding: 4px 8px; display: flex; align-items: center;">›</button>
-          </div>
-        `;
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #2a2925;">
+            <button onclick="changeDate(-1)" style="background:none;border:none;color:#8a8985;cursor:pointer;font-size:18px;padding:4px 8px;">‹</button>
+            <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;">${label}</p>
+            <button onclick="changeDate(1)"  style="background:none;border:none;color:#8a8985;cursor:pointer;font-size:18px;padding:4px 8px;">›</button>
+          </div>`;
       }
 
-      // Get weekly tasks for this day
-      const weeklyTasks = getWeeklyTasksForDay();
-      let weeklyTasksHtml = '';
-
       let content = '';
-      if (state.activeTab === 'daily') content = renderDailyView();
-      else if (state.activeTab === 'prayer') content = renderPrayerView();
-      else if (state.activeTab === 'weekly') content = renderWeeklyView();
+      if      (state.activeTab === 'daily')   content = renderDailyView();
+      else if (state.activeTab === 'prayer')  content = renderPrayerView();
+      else if (state.activeTab === 'weekly')  content = renderWeeklyView();
       else if (state.activeTab === 'monthly') content = renderMonthlyView();
-      else if (state.activeTab === 'stats') content = renderStatsView();
+      else if (state.activeTab === 'stats')   content = renderStatsView();
 
-      const html = `
+      document.getElementById('root').innerHTML = `
         <div class="container">
-          <div style="position: sticky; top: 0; background: #0a0a0a; border-bottom: 1px solid #2a2925; z-index: 10;">
-            <!-- Header with Settings Button -->
-            <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid #2a2925;">
-              <button onclick="goToProfile()" style="background: none; border: none; color: #8a8985; cursor: pointer; padding: 4px 8px; display: flex; align-items: center;">
+          <div style="position:sticky;top:0;background:#0a0a0a;border-bottom:1px solid #2a2925;z-index:10;">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #2a2925;">
+              <button onclick="goToProfile()" style="background:none;border:none;color:#8a8985;cursor:pointer;padding:4px 8px;display:flex;align-items:center;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="12" cy="8" r="4"/>
-                  <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+                  <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
                 </svg>
               </button>
-              <h1 onclick="goToToday()" style="font-size: 14px; font-weight: 400; margin: 0; cursor: pointer;">Discipline</h1>
-              <button onclick="goToSettings()" style="background: none; border: none; color: #8a8985; cursor: pointer; padding: 4px 8px; display: flex; align-items: center;">
+              <h1 onclick="goToToday()" style="font-size:14px;font-weight:400;margin:0;cursor:pointer;">Discipline</h1>
+              <button onclick="goToSettings()" style="background:none;border:none;color:#8a8985;cursor:pointer;padding:4px 8px;display:flex;align-items:center;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="4" y1="6" x2="20" y2="6"/>
-                  <line x1="4" y1="12" x2="20" y2="12"/>
-                  <line x1="4" y1="18" x2="20" y2="18"/>
-                  <circle cx="8" cy="6" r="2" fill="#0a0a0a"/>
-                  <circle cx="16" cy="12" r="2" fill="#0a0a0a"/>
-                  <circle cx="10" cy="18" r="2" fill="#0a0a0a"/>
+                  <line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/>
+                  <circle cx="8" cy="6" r="2" fill="#0a0a0a"/><circle cx="16" cy="12" r="2" fill="#0a0a0a"/><circle cx="10" cy="18" r="2" fill="#0a0a0a"/>
                 </svg>
               </button>
             </div>
-
-            <!-- Date Navigation -->
             ${dateNavHtml}
-
-            <!-- Tab Navigation -->
-            <div style="display: flex; gap: 14px; border-bottom: 1px solid #2a2925; padding: 0 14px; align-items: center;">
+            <div style="display:flex;gap:14px;border-bottom:1px solid #2a2925;padding:0 14px;align-items:center;">
               ${tabNav}
             </div>
           </div>
-
-          <div style="padding: 12px 14px; max-width: 480px; margin: 0 auto;">
+          <div style="padding:12px 14px;max-width:480px;margin:0 auto;">
             ${content}
           </div>
-        </div>
-      `;
-
-      document.getElementById('root').innerHTML = html;
+        </div>`;
     }
 
-    render();
+    // ─── Boot ────────────────────────────────────────────────────────────────────
+
+    async function initApp() {
+      // Auth check
+      const { data: { session } } = await db.auth.getSession();
+      if (!session) {
+        window.location.href = 'habit_tracker_login.html';
+        return;
+      }
+      currentUser = session.user;
+
+      // Load all non-archived habits ordered by sort_order
+      const { data: habits, error } = await db.from('habits')
+        .select('*')
+        .eq('archived', false)
+        .order('sort_order');
+
+      state.habits = habits || [];
+
+      // Identify special habit IDs
+      state.prayerHabitId = state.habits.find(h => h.name === 'Prayers')?.id || null;
+      state.weightHabitId = state.habits.find(h => h.name === 'Daily weight')?.id || null;
+
+      // Load data for the initial tab/date
+      await loadTabData();
+
+      render();
+    }
+
+    initApp();
   </script>
 </body>
 </html>
