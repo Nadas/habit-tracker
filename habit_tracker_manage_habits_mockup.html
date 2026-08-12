@@ -209,6 +209,11 @@
         const names = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
         return `Weekly: ${h.days.map(d => names[d]).join(', ')}`;
       }
+      if (h.frequency === 'monthly' && h.days && h.days.length === 2) {
+        const nthLabels = { 1:'1st', 2:'2nd', 3:'3rd', 4:'4th', 5:'Last' };
+        const dayNames  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+        return `Monthly (${nthLabels[h.days[0]]} ${dayNames[h.days[1]]})`;
+      }
       if (h.frequency === 'monthly' && h.day) {
         return `Monthly (${h.day}${ordinal(h.day)})`;
       }

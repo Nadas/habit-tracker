@@ -39,7 +39,7 @@
     }
     .form-section { margin-bottom: 16px; }
     .radio-group { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
-    .radio-option { flex: 1; min-width: 80px; }
+    .radio-option { flex: 1; min-width: 60px; }
     .radio-option input[type="radio"] { display: none; }
     .radio-option label {
       display: block; padding: 8px 10px; background: #141411; border: 1px solid #2a2925;
@@ -56,13 +56,8 @@
       font-weight: 500; font-family: inherit; transition: all 0.2s;
     }
     .day-button.selected { background: #d97757; border-color: #d97757; color: #0a0a0a; font-weight: 600; }
-    .month-selector { display: grid; grid-template-columns: repeat(2,1fr); gap: 8px; margin-top: 8px; }
-    .month-button {
-      padding: 12px; background: #141411; border: 1px solid #2a2925;
-      border-radius: 4px; color: #8a8985; cursor: pointer; font-size: 12px;
-      font-family: inherit; transition: all 0.2s; text-align: center;
-    }
-    .month-button.selected { background: #d97757; border-color: #d97757; color: #0a0a0a; font-weight: 600; }
+    /* Single-select day button (monthly weekday) */
+    .day-button.solo-select { border-radius: 4px; }
     .note { color: #8a8985; font-size: 10px; margin-top: 6px; }
     .button-group { display: flex; gap: 8px; margin-top: 20px; margin-bottom: 40px; }
     button.primary {
@@ -85,6 +80,22 @@
       margin-bottom: 12px; display: none;
     }
     .error-banner.visible { display: block; }
+    /* Nth row for monthly */
+    .nth-group { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+    .nth-option { flex: 1; min-width: 50px; }
+    .nth-option input[type="radio"] { display: none; }
+    .nth-option label {
+      display: block; padding: 7px 6px; background: #141411; border: 1px solid #2a2925;
+      border-radius: 4px; text-align: center; cursor: pointer; transition: all 0.2s;
+      margin: 0; font-size: 11px; text-transform: none; letter-spacing: 0; color: #8a8985;
+    }
+    .nth-option input[type="radio"]:checked + label {
+      background: #d97757; border-color: #d97757; color: #0a0a0a; font-weight: 600;
+    }
+    /* Monthly summary label */
+    .monthly-preview {
+      font-size: 11px; color: #8a8985; margin-top: 8px; font-style: italic;
+    }
   </style>
 </head>
 <body>
@@ -174,12 +185,29 @@
       </div>
     </div>
 
-    <!-- Monthly date -->
+    <!-- Monthly: Nth weekday picker -->
     <div class="conditional" id="monthlySection">
       <div class="form-section">
-        <label for="monthlyDate">Day of Month</label>
-        <input type="number" id="monthlyDate" min="1" max="31" placeholder="1–31" value="15" />
-        <p class="note">Days 29–31 skip months without that day</p>
+        <label>Recurs on</label>
+        <!-- Nth row -->
+        <div class="nth-group">
+          <div class="nth-option"><input type="radio" name="nth" id="nth-1" value="1" checked /><label for="nth-1">1st</label></div>
+          <div class="nth-option"><input type="radio" name="nth" id="nth-2" value="2"          /><label for="nth-2">2nd</label></div>
+          <div class="nth-option"><input type="radio" name="nth" id="nth-3" value="3"          /><label for="nth-3">3rd</label></div>
+          <div class="nth-option"><input type="radio" name="nth" id="nth-4" value="4"          /><label for="nth-4">4th</label></div>
+          <div class="nth-option"><input type="radio" name="nth" id="nth-5" value="5"          /><label for="nth-5">Last</label></div>
+        </div>
+        <!-- Weekday single-select -->
+        <div class="day-selector" id="monthlyWeekdaySelector" style="margin-top:8px;">
+          <button type="button" class="day-button solo-select" data-weekday="0">Sun</button>
+          <button type="button" class="day-button solo-select" data-weekday="1">Mon</button>
+          <button type="button" class="day-button solo-select" data-weekday="2">Tue</button>
+          <button type="button" class="day-button solo-select" data-weekday="3">Wed</button>
+          <button type="button" class="day-button solo-select selected" data-weekday="4">Thu</button>
+          <button type="button" class="day-button solo-select" data-weekday="5">Fri</button>
+          <button type="button" class="day-button solo-select" data-weekday="6">Sat</button>
+        </div>
+        <p class="monthly-preview" id="monthlyPreview">Recurs on the 1st Thursday of every month</p>
       </div>
     </div>
 
@@ -187,11 +215,23 @@
     <div class="conditional" id="quarterlySection">
       <div class="form-section">
         <label>Starting Month</label>
-        <div class="month-selector">
-          <button type="button" class="month-button selected" data-month="0"><div style="font-weight:600;">Jan</div><div style="font-size:9px;color:#7a7570;margin-top:2px;">Q1</div></button>
-          <button type="button" class="month-button" data-month="3"><div style="font-weight:600;">Apr</div><div style="font-size:9px;color:#7a7570;margin-top:2px;">Q2</div></button>
-          <button type="button" class="month-button" data-month="6"><div style="font-weight:600;">Jul</div><div style="font-size:9px;color:#7a7570;margin-top:2px;">Q3</div></button>
-          <button type="button" class="month-button" data-month="9"><div style="font-weight:600;">Oct</div><div style="font-size:9px;color:#7a7570;margin-top:2px;">Q4</div></button>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:8px;">
+          <button type="button" class="day-button selected" data-month="0" id="qm-0" style="padding:12px;">
+            <div style="font-weight:600;font-size:12px;">Jan</div>
+            <div style="font-size:9px;color:#7a7570;margin-top:2px;">Q1</div>
+          </button>
+          <button type="button" class="day-button" data-month="3" id="qm-3" style="padding:12px;">
+            <div style="font-weight:600;font-size:12px;">Apr</div>
+            <div style="font-size:9px;color:#7a7570;margin-top:2px;">Q2</div>
+          </button>
+          <button type="button" class="day-button" data-month="6" id="qm-6" style="padding:12px;">
+            <div style="font-weight:600;font-size:12px;">Jul</div>
+            <div style="font-size:9px;color:#7a7570;margin-top:2px;">Q3</div>
+          </button>
+          <button type="button" class="day-button" data-month="9" id="qm-9" style="padding:12px;">
+            <div style="font-weight:600;font-size:12px;">Oct</div>
+            <div style="font-size:9px;color:#7a7570;margin-top:2px;">Q4</div>
+          </button>
         </div>
         <p class="note">Habit recurs every 3 months from this month</p>
       </div>
@@ -214,9 +254,14 @@
     const mode    = params.get('mode') || 'add';
     const habitId = params.get('id');
 
-    let currentUser   = null;
-    let selectedDays  = new Set();
-    let selectedQuarter = 0;
+    let currentUser          = null;
+    let selectedDays         = new Set();
+    let selectedQuarter      = 0;
+    let selectedMonthlyNth   = 1;   // 1–5 (5 = Last)
+    let selectedMonthlyWkday = 4;   // 0 (Sun) – 6 (Sat); default Thursday
+
+    const nthLabels  = { 1:'1st', 2:'2nd', 3:'3rd', 4:'4th', 5:'Last' };
+    const wkdayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
     // ─── Init ─────────────────────────────────────────────────────────────────
 
@@ -225,16 +270,20 @@
       if (!session) { window.location.href = 'habit_tracker_login.html'; return; }
       currentUser = session.user;
 
-      // Wire up listeners
+      // Frequency change
       document.querySelectorAll('input[name="frequency"]').forEach(r =>
         r.addEventListener('change', e => updateConditionalSections(e.target.value))
       );
+
+      // Type change
       document.querySelectorAll('input[name="type"]').forEach(r =>
         r.addEventListener('change', e => {
           document.getElementById('unitSection').classList.toggle('visible', e.target.value === 'number');
         })
       );
-      document.querySelectorAll('.day-button').forEach(btn =>
+
+      // Weekly multi-select days
+      document.querySelectorAll('.day-button[data-day]').forEach(btn =>
         btn.addEventListener('click', e => {
           e.preventDefault();
           const day = parseInt(btn.dataset.day);
@@ -242,10 +291,31 @@
           else                       { selectedDays.add(day);    btn.classList.add('selected');    }
         })
       );
-      document.querySelectorAll('.month-button').forEach(btn =>
+
+      // Monthly: nth radio change
+      document.querySelectorAll('input[name="nth"]').forEach(r =>
+        r.addEventListener('change', e => {
+          selectedMonthlyNth = parseInt(e.target.value);
+          updateMonthlyPreview();
+        })
+      );
+
+      // Monthly: weekday single-select
+      document.querySelectorAll('#monthlyWeekdaySelector .day-button').forEach(btn =>
         btn.addEventListener('click', e => {
           e.preventDefault();
-          document.querySelectorAll('.month-button').forEach(b => b.classList.remove('selected'));
+          selectedMonthlyWkday = parseInt(btn.dataset.weekday);
+          document.querySelectorAll('#monthlyWeekdaySelector .day-button').forEach(b => b.classList.remove('selected'));
+          btn.classList.add('selected');
+          updateMonthlyPreview();
+        })
+      );
+
+      // Quarterly month buttons
+      document.querySelectorAll('[data-month]').forEach(btn =>
+        btn.addEventListener('click', e => {
+          e.preventDefault();
+          document.querySelectorAll('[data-month]').forEach(b => b.classList.remove('selected'));
           btn.classList.add('selected');
           selectedQuarter = parseInt(btn.dataset.month);
         })
@@ -257,6 +327,14 @@
         await loadHabit();
       } else {
         updateConditionalSections('daily');
+        updateMonthlyPreview();
+      }
+    }
+
+    function updateMonthlyPreview() {
+      const el = document.getElementById('monthlyPreview');
+      if (el) {
+        el.textContent = `Recurs on the ${nthLabels[selectedMonthlyNth]} ${wkdayNames[selectedMonthlyWkday]} of every month`;
       }
     }
 
@@ -277,7 +355,8 @@
 
       if (h.unit) document.getElementById('unit').value = h.unit;
 
-      if (h.days) {
+      // Weekly days
+      if (h.frequency === 'weekly' && h.days) {
         h.days.forEach(d => {
           selectedDays.add(d);
           const btn = document.querySelector(`.day-button[data-day="${d}"]`);
@@ -285,7 +364,19 @@
         });
       }
 
-      if (h.day) document.getElementById('monthlyDate').value = h.day;
+      // Monthly: new [nth, weekday] format or legacy day-of-month
+      if (h.frequency === 'monthly') {
+        if (h.days && h.days.length === 2) {
+          selectedMonthlyNth   = h.days[0];
+          selectedMonthlyWkday = h.days[1];
+          const nthRadio = document.getElementById(`nth-${h.days[0]}`);
+          if (nthRadio) nthRadio.checked = true;
+          document.querySelectorAll('#monthlyWeekdaySelector .day-button').forEach(b => {
+            b.classList.toggle('selected', parseInt(b.dataset.weekday) === h.days[1]);
+          });
+        }
+        // Legacy day-of-month: just leave defaults, user can update
+      }
 
       if (h.section) {
         const sEl = document.getElementById(`section-${h.section}`);
@@ -293,6 +384,7 @@
       }
 
       updateConditionalSections(h.frequency);
+      updateMonthlyPreview();
       if (h.type === 'number') document.getElementById('unitSection').classList.add('visible');
     }
 
@@ -316,10 +408,15 @@
         name,
         frequency,
         type,
-        unit:     type === 'number' ? (document.getElementById('unit').value || null) : null,
-        section:  frequency === 'daily'   ? document.querySelector('input[name="section"]:checked').value : null,
-        days:     frequency === 'weekly'  ? Array.from(selectedDays).sort() : null,
-        day:      frequency === 'monthly' ? parseInt(document.getElementById('monthlyDate').value) || null : null,
+        unit:    type === 'number' ? (document.getElementById('unit').value || null) : null,
+        section: frequency === 'daily' ? document.querySelector('input[name="section"]:checked').value : null,
+        // Weekly: array of weekday numbers
+        // Monthly: [nth, weekday] tuple stored in days column
+        // Quarterly/Daily: null
+        days:    frequency === 'weekly'  ? Array.from(selectedDays).sort()
+               : frequency === 'monthly' ? [selectedMonthlyNth, selectedMonthlyWkday]
+               : null,
+        day:     null, // no longer used
         archived: false,
       };
 
@@ -328,7 +425,6 @@
       if (mode === 'edit') {
         ({ error } = await db.from('habits').update(payload).eq('id', habitId));
       } else {
-        // Get next sort_order for this frequency group
         const { data: existing } = await db.from('habits')
           .select('sort_order')
           .eq('user_id', currentUser.id)
@@ -360,7 +456,6 @@
         quarterly: ['quarterlySection'],
       };
       (map[frequency] || []).forEach(id => document.getElementById(id)?.classList.add('visible'));
-      // Keep unit section visible if number type is selected
       if (document.querySelector('input[name="type"]:checked')?.value === 'number') {
         document.getElementById('unitSection').classList.add('visible');
       }

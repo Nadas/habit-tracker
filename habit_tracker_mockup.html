@@ -40,19 +40,25 @@
     let state = {
       activeTab: 'daily',
       selectedDate: new Date(),
-      habits: [],               // habit rows from DB
-      completionsByDate: {},    // { 'YYYY-MM-DD': { habitId: value } }
-      prayersByDate: {},        // { 'YYYY-MM-DD': { fajr, dhuhr, ... menstruating } }
-      dailyNotes: {},           // { 'YYYY-MM-DD': string }
+      habits: [],
+      completionsByDate: {},
+      prayersByDate: {},
+      dailyNotes: {},
       prayerHabitId: null,
       weightHabitId: null,
-      weightData: {},           // { 'YYYY-MM-DD': number } for stats
+      weightData: {},
+      weightGoal: null,
+      calendarOpen: false,
+      calendarViewDate: null,
+      allNotes: null,
+      yearCompletions: {},
     };
 
     const dayNames   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
     const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const monthShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-    // ─── Helpers ───────────────────────────────────────────────────────────────
+    // ─── Helpers ─────────────────────────────────────────────────────────────────
 
     function getCompletions(date) {
       return state.completionsByDate[dateKey(date)] || {};
@@ -79,7 +85,6 @@
       return v === undefined ? false : v;
     }
 
-    // Returns { dot, text } for a prayer state
     function prayerStatus(prayers, future) {
       if (future) return { dot:'#444441', text:'Incomplete' };
       if (prayers.menstruating) return { dot:'#7a3535', text:'Menstruating' };
@@ -87,7 +92,40 @@
       return { dot:'#444441', text:'Incomplete' };
     }
 
-    // ─── Data loading ───────────────────────────────────────────────────────────
+    // Compute the date of the Nth weekday in a given month
+    // nth: 1–4, or 5 = Last; weekday: 0 (Sun) – 6 (Sat)
+    function getNthWeekday(year, month, nth, weekday) {
+      const firstDay = new Date(year, month, 1);
+      const firstOccurrence = ((weekday - firstDay.getDay()) + 7) % 7;
+      let day = 1 + firstOccurrence + (nth - 1) * 7;
+      if (nth === 5) { // Last occurrence
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        while (day + 7 <= daysInMonth) day += 7;
+      }
+      return day;
+    }
+
+    function isMonthlyHabitDueToday(habit, date) {
+      if (habit.days && habit.days.length === 2) {
+        // New format: [nth, weekday]
+        const dueDay = getNthWeekday(date.getFullYear(), date.getMonth(), habit.days[0], habit.days[1]);
+        return date.getDate() === dueDay;
+      } else if (habit.day) {
+        // Legacy: specific day of month
+        return date.getDate() === habit.day;
+      }
+      return false;
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // ─── Data loading ─────────────────────────────────────────────────────────────
 
     function parseCompletionValue(val) {
       if (val === 'true')  return true;
@@ -184,7 +222,42 @@
       });
     }
 
-    // ─── Mutations ──────────────────────────────────────────────────────────────
+    async function loadCompletionsForYear(year) {
+      const startKey = `${year}-01-01`;
+      const endKey   = `${year}-12-31`;
+
+      const { data } = await db.from('completions')
+        .select('habit_id, date, value')
+        .eq('user_id', currentUser.id)
+        .gte('date', startKey)
+        .lte('date', endKey);
+
+      const byHabitMonth = {};
+      (data || []).forEach(c => {
+        const monthKey = c.date.substring(5, 7);
+        const key = `${c.habit_id}_${monthKey}`;
+        if (c.value === 'true' || (c.value && c.value !== 'false' && c.value !== '')) {
+          byHabitMonth[key] = true;
+        } else if (byHabitMonth[key] === undefined) {
+          byHabitMonth[key] = false;
+        }
+      });
+
+      state.yearCompletions = byHabitMonth;
+    }
+
+    async function loadAllNotes() {
+      if (state.allNotes !== null) return;
+
+      const { data } = await db.from('daily_notes')
+        .select('date, content')
+        .eq('user_id', currentUser.id)
+        .order('date', { ascending: false });
+
+      state.allNotes = (data || []).filter(n => n.content && n.content.trim());
+    }
+
+    // ─── Mutations ────────────────────────────────────────────────────────────────
 
     async function setHabit(habitId, value) {
       const key = dateKey(state.selectedDate);
@@ -228,16 +301,18 @@
     async function saveNote(value) {
       const key = dateKey(state.selectedDate);
       state.dailyNotes[key] = value;
+      state.allNotes = null; // invalidate notes cache
       await db.from('daily_notes').upsert(
         { user_id: currentUser.id, date: key, content: value },
         { onConflict: 'user_id,date' }
       );
     }
 
-    // ─── Navigation ─────────────────────────────────────────────────────────────
+    // ─── Navigation ───────────────────────────────────────────────────────────────
 
     async function setActiveTab(tab) {
       state.activeTab = tab;
+      state.calendarOpen = false;
       await loadTabData();
       render();
     }
@@ -246,6 +321,7 @@
       const d = new Date(state.selectedDate);
       d.setDate(d.getDate() + days);
       state.selectedDate = d;
+      state.calendarOpen = false;
       await loadTabData();
       render();
     }
@@ -258,9 +334,50 @@
       render();
     }
 
+    async function changeYear(years) {
+      const d = new Date(state.selectedDate);
+      d.setFullYear(d.getFullYear() + years);
+      state.selectedDate = d;
+      state.yearCompletions = {}; // invalidate year cache
+      await loadTabData();
+      render();
+    }
+
     async function goToToday() {
       state.selectedDate = new Date();
       state.activeTab = 'daily';
+      state.calendarOpen = false;
+      await loadTabData();
+      render();
+    }
+
+    // Mini-calendar
+    function toggleCalendar() {
+      state.calendarOpen = !state.calendarOpen;
+      if (state.calendarOpen) {
+        state.calendarViewDate = new Date(state.selectedDate.getFullYear(), state.selectedDate.getMonth(), 1);
+      }
+      render();
+    }
+
+    function closeCalendar() {
+      state.calendarOpen = false;
+      render();
+    }
+
+    function calendarPrevMonth() {
+      state.calendarViewDate = new Date(state.calendarViewDate.getFullYear(), state.calendarViewDate.getMonth() - 1, 1);
+      render();
+    }
+
+    function calendarNextMonth() {
+      state.calendarViewDate = new Date(state.calendarViewDate.getFullYear(), state.calendarViewDate.getMonth() + 1, 1);
+      render();
+    }
+
+    async function selectCalendarDate(y, m, d) {
+      state.selectedDate = new Date(y, m, d);
+      state.calendarOpen = false;
       await loadTabData();
       render();
     }
@@ -285,10 +402,14 @@
         await loadCompletionsForRange(start, end);
       } else if (tab === 'stats') {
         await loadWeightForMonth(date.getFullYear(), date.getMonth());
+      } else if (tab === 'year') {
+        await loadCompletionsForYear(date.getFullYear());
+      } else if (tab === 'notes') {
+        await loadAllNotes();
       }
     }
 
-    // ─── Render helpers ─────────────────────────────────────────────────────────
+    // ─── Render helpers ───────────────────────────────────────────────────────────
 
     function renderHabitItem(habit) {
       const value = getHabitValue(habit.id, state.selectedDate);
@@ -299,7 +420,7 @@
         return `
           <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:#141411;border-radius:4px;border:1px solid #2a2925;">
             <div style="flex:1;"><p style="color:#f5f1ed;font-size:12px;font-weight:400;">${habit.name}</p></div>
-            <input type="text" value="${value || ''}"
+            <input type="text" value="${escapeHtml(String(value || ''))}"
               onchange="setHabit('${habit.id}', this.value)"
               placeholder="${placeholder}"
               style="width:60px;text-align:right;background:#0a0a0a;border:1px solid #2a2925;color:#f5f1ed;padding:5px 8px;border-radius:4px;font-size:12px;outline:none;" />
@@ -328,8 +449,8 @@
         </div>`;
     }
 
-    // Renders a single grid cell for weekly/monthly views
-    function renderGridCell(h, k) {
+    // dateObj optional: used for weekly habits to check due-day
+    function renderGridCell(h, k, dateObj) {
       if (h.id === state.prayerHabitId) {
         const dp = state.prayersByDate[k] || {};
         let bg = '#2a2925', op = 0.4;
@@ -337,6 +458,14 @@
         else if (PRAYER_KEYS.every(pk => dp[pk])) { bg = '#d97757'; op = 1; }
         return `<div style="width:10px;height:10px;border-radius:2px;background:${bg};opacity:${op};margin:0 auto;"></div>`;
       }
+
+      // Weekly habits: only show a dot on days the habit is scheduled
+      if (h.frequency === 'weekly' && dateObj) {
+        if (!h.days || !h.days.includes(dateObj.getDay())) {
+          return `<div style="width:10px;height:10px;margin:0 auto;"></div>`;
+        }
+      }
+
       const val  = (state.completionsByDate[k] || {})[h.id];
       const done = h.type === 'number'
         ? (val !== null && val !== undefined && val !== '' && val !== false && val !== 'false')
@@ -344,14 +473,63 @@
       return `<div style="width:10px;height:10px;border-radius:2px;background:${done?'#d97757':'#2a2925'};opacity:${done?1:0.4};margin:0 auto;"></div>`;
     }
 
-    // ─── View renderers ──────────────────────────────────────────────────────────
+    // ─── Calendar overlay ─────────────────────────────────────────────────────────
+
+    function renderCalendarOverlay() {
+      if (!state.calendarOpen || !state.calendarViewDate) return '';
+
+      const cvd  = state.calendarViewDate;
+      const year = cvd.getFullYear();
+      const month = cvd.getMonth();
+      const firstDay = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const selectedKey = dateKey(state.selectedDate);
+      const todayKey    = dateKey(new Date());
+      const shortDays   = ['S','M','T','W','T','F','S'];
+
+      let cells = shortDays.map(d =>
+        `<div style="text-align:center;color:#5a5955;font-size:9px;padding:3px 0;">${d}</div>`
+      ).join('');
+
+      for (let i = 0; i < firstDay; i++) cells += `<div></div>`;
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        const k = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+        const isSelected = k === selectedKey;
+        const isToday    = k === todayKey;
+        const bg    = isSelected ? '#d97757' : isToday ? '#2a2925' : 'transparent';
+        const color = isSelected ? '#0a0a0a' : '#8a8985';
+        const fw    = isSelected || isToday ? '600' : '400';
+        cells += `<button onclick="selectCalendarDate(${year},${month},${day})"
+          style="background:${bg};border:none;color:${color};font-size:11px;font-weight:${fw};border-radius:3px;padding:5px 0;cursor:pointer;font-family:inherit;text-align:center;">${day}</button>`;
+      }
+
+      return `
+        <div onclick="closeCalendar()"
+          style="position:fixed;inset:0;z-index:50;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;">
+          <div onclick="event.stopPropagation()"
+            style="background:#141411;border:1px solid #2a2925;border-radius:6px;padding:14px;width:256px;max-width:92vw;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+              <button onclick="calendarPrevMonth()"
+                style="background:none;border:none;color:#8a8985;cursor:pointer;font-size:18px;padding:2px 8px;line-height:1;">‹</button>
+              <span style="color:#f5f1ed;font-size:11px;font-weight:600;letter-spacing:0.3px;">${monthNames[month]} ${year}</span>
+              <button onclick="calendarNextMonth()"
+                style="background:none;border:none;color:#8a8985;cursor:pointer;font-size:18px;padding:2px 8px;line-height:1;">›</button>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">
+              ${cells}
+            </div>
+          </div>
+        </div>`;
+    }
+
+    // ─── View renderers ───────────────────────────────────────────────────────────
 
     function renderDailyView() {
       const dow    = state.selectedDate.getDay();
       const key    = dateKey(state.selectedDate);
       const future = isFutureDate(state.selectedDate);
 
-      // Exclude the prayer habit from morning/evening sections
       const morningHabits = state.habits.filter(h =>
         h.frequency === 'daily' && h.section === 'morning' && h.id !== state.prayerHabitId
       );
@@ -365,6 +543,9 @@
       ];
       const weeklyHabits = state.habits.filter(h =>
         h.frequency === 'weekly' && h.days && h.days.includes(dow) && !h.section
+      );
+      const monthlyHabits = state.habits.filter(h =>
+        h.frequency === 'monthly' && isMonthlyHabitDueToday(h, state.selectedDate)
       );
 
       const prayers        = getPrayers(state.selectedDate);
@@ -390,14 +571,15 @@
           <textarea onchange="saveNote(this.value)" placeholder="Add a note for today…"
             style="width:100%;background:#141411;border:1px solid #2a2925;color:#f5f1ed;border-radius:4px;padding:9px 12px;font-size:12px;font-family:inherit;resize:none;min-height:72px;outline:none;transition:border-color 0.2s;"
             onfocus="this.style.borderColor='#d97757'" onblur="this.style.borderColor='#2a2925'"
-          >${savedNote}</textarea>
+          >${escapeHtml(savedNote)}</textarea>
         </div>`;
 
       return `<div style="display:flex;flex-direction:column;gap:12px;">
         ${renderSection('Morning', morningHabits)}
         ${renderSection('Evening', eveningHabits)}
         ${prayerRow}
-        ${weeklyHabits.length ? renderSection('Weekly', weeklyHabits) : ''}
+        ${weeklyHabits.length  ? renderSection('Weekly',  weeklyHabits)  : ''}
+        ${monthlyHabits.length ? renderSection('Monthly', monthlyHabits) : ''}
         ${notesRow}
       </div>`;
     }
@@ -457,8 +639,8 @@
       const startOfWeek = new Date(state.selectedDate);
       startOfWeek.setDate(state.selectedDate.getDate() - dow);
 
-      // Include prayer habit in grid (filtered when prayerHabitId exists)
-      const gridHabits   = state.habits.filter(h => h.frequency === 'daily');
+      // Bug fix: include weekly habits in the matrix
+      const gridHabits    = state.habits.filter(h => h.frequency === 'daily' || h.frequency === 'weekly');
       const dayShortNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
       let html = `
@@ -486,7 +668,7 @@
           <td style="padding:3px 4px;text-align:right;color:#7a7570;font-size:9px;font-weight:600;">${dayShortNames[d.getDay()]}</td>`;
 
         gridHabits.forEach(h => {
-          html += `<td style="padding:3px 2px;text-align:center;">${renderGridCell(h, k)}</td>`;
+          html += `<td style="padding:3px 2px;text-align:center;">${renderGridCell(h, k, d)}</td>`;
         });
 
         html += `</tr>`;
@@ -500,7 +682,9 @@
       const year        = state.selectedDate.getFullYear();
       const month       = state.selectedDate.getMonth();
       const daysInMonth = new Date(year, month + 1, 0).getDate();
-      const gridHabits  = state.habits.filter(h => h.frequency === 'daily');
+
+      // Bug fix: include weekly habits in the matrix
+      const gridHabits  = state.habits.filter(h => h.frequency === 'daily' || h.frequency === 'weekly');
 
       let html = `
         <div style="display:flex;flex-direction:column;gap:10px;">
@@ -520,13 +704,58 @@
       html += `</tr></thead><tbody>`;
 
       for (let day = 1; day <= daysInMonth; day++) {
-        const k = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+        const dateObj = new Date(year, month, day);
+        const k = dateKey(dateObj);
 
         html += `<tr style="border-top:1px solid #2a2925;">
           <td style="padding:3px 4px;text-align:right;color:#7a7570;font-size:9px;font-weight:600;">${day}</td>`;
 
         gridHabits.forEach(h => {
-          html += `<td style="padding:3px 2px;text-align:center;">${renderGridCell(h, k)}</td>`;
+          html += `<td style="padding:3px 2px;text-align:center;">${renderGridCell(h, k, dateObj)}</td>`;
+        });
+
+        html += `</tr>`;
+      }
+
+      html += `</tbody></table></div></div>`;
+      return html;
+    }
+
+    function renderYearView() {
+      const year = state.selectedDate.getFullYear();
+      const habits = state.habits.filter(h =>
+        h.frequency === 'monthly' || h.frequency === 'quarterly'
+      );
+
+      if (habits.length === 0) {
+        return `<div style="text-align:center;padding:40px 20px;color:#7a7570;font-size:12px;">No monthly or quarterly habits yet.</div>`;
+      }
+
+      let html = `
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="background:#141411;border-radius:6px;border:1px solid #2a2925;padding:8px;overflow-x:auto;">
+            <table style="width:auto;border-collapse:collapse;font-size:10px;">
+              <thead><tr><th style="width:32px;padding-right:4px;text-align:left;"></th>`;
+
+      habits.forEach(h => {
+        html += `<th style="padding:4px 2px;width:24px;height:100px;">
+          <p style="color:#f5f1ed;font-weight:400;font-size:9px;writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;">${h.name}</p>
+        </th>`;
+      });
+
+      html += `</tr></thead><tbody>`;
+
+      for (let m = 0; m < 12; m++) {
+        const monthKey = String(m + 1).padStart(2, '0');
+        html += `<tr style="border-top:1px solid #2a2925;">
+          <td style="padding:3px 6px 3px 2px;text-align:right;color:#7a7570;font-size:9px;font-weight:600;">${monthShort[m]}</td>`;
+
+        habits.forEach(h => {
+          const key  = `${h.id}_${monthKey}`;
+          const done = !!state.yearCompletions[key];
+          html += `<td style="padding:3px 2px;text-align:center;">
+            <div style="width:10px;height:10px;border-radius:2px;background:${done?'#d97757':'#2a2925'};opacity:${done?1:0.4};margin:0 auto;"></div>
+          </td>`;
         });
 
         html += `</tr>`;
@@ -541,11 +770,12 @@
       const month = state.selectedDate.getMonth();
       const daysInMonth = new Date(year, month + 1, 0).getDate();
 
+      // Build monthData from the full month, using actual day numbers
       const monthData = [];
       for (let d = 1; d <= daysInMonth; d++) {
         const k = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
         if (state.weightData[k] !== undefined) {
-          monthData.push({ date: String(d), weight: state.weightData[k] });
+          monthData.push({ day: d, weight: state.weightData[k] });
         }
       }
 
@@ -556,10 +786,10 @@
       const weights       = monthData.map(d => d.weight);
       const startWeight   = weights[0];
       const currentWeight = weights[weights.length - 1];
-      const goalWeight    = 63.0;
       const weightLost    = startWeight - currentWeight;
-      const weightToGoal  = currentWeight - goalWeight;
+      const goalWeight    = state.weightGoal;
 
+      // Chart dimensions
       const chartWidth  = 420, chartHeight = 200;
       const pL = 40, pR = 20, pT = 20, pB = 40;
       const iW = chartWidth - pL - pR;
@@ -569,9 +799,15 @@
       const maxW  = Math.max(...weights);
       const range = maxW - minW || 1;
 
+      // Map a day (1-daysInMonth) to an x coordinate
+      function dayToX(day) {
+        return pL + ((day - 1) / Math.max(daysInMonth - 1, 1)) * iW;
+      }
+
+      // Build polyline using actual day positions
       let points = '';
-      monthData.forEach((e, i) => {
-        const x = pL + (i / (monthData.length - 1)) * iW;
+      monthData.forEach(e => {
+        const x = dayToX(e.day);
         const y = pT + iH - ((e.weight - minW) / range) * iH;
         points += `${x},${y} `;
       });
@@ -584,41 +820,48 @@
         yLabels += `<text x="${pL-6}" y="${y+3}" font-size="8" fill="#8a8985" text-anchor="end">${val.toFixed(1)}</text>`;
       }
 
+      // X labels: every 5 days, plus day 1 and last day
       let xLabels = '';
-      for (let i = 0; i < monthData.length; i += 5) {
-        const x = pL + (i / (monthData.length - 1)) * iW;
-        xLabels += `<text x="${x}" y="${pT+iH+16}" font-size="9" fill="#8a8985" text-anchor="middle">${monthData[i].date}</text>`;
-      }
-      const lastX = pL + iW;
-      xLabels += `<text x="${lastX}" y="${pT+iH+16}" font-size="9" fill="#8a8985" text-anchor="middle">${monthData[monthData.length-1].date}</text>`;
+      const labelDays = new Set([1, daysInMonth]);
+      for (let d = 5; d < daysInMonth; d += 5) labelDays.add(d);
+      labelDays.forEach(d => {
+        const x = dayToX(d);
+        xLabels += `<text x="${x}" y="${pT+iH+16}" font-size="9" fill="#8a8985" text-anchor="middle">${d}</text>`;
+      });
 
-      const dots = monthData.map((e, i) => {
-        const x = pL + (i / (monthData.length - 1)) * iW;
+      const dots = monthData.map(e => {
+        const x = dayToX(e.day);
         const y = pT + iH - ((e.weight - minW) / range) * iH;
         return `<circle cx="${x}" cy="${y}" r="1.5" fill="#d97757" opacity="0.8"/>`;
       }).join('');
 
-      return `
-        <div style="display:flex;flex-direction:column;gap:16px;">
-          <div style="display:flex;gap:12px;">
-            <div style="flex:1;background:#141411;border:1px solid #2a2925;border-radius:6px;padding:16px;">
-              <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:8px;">Weight Lost</p>
-              <p style="color:#f5f1ed;font-size:24px;font-weight:400;margin-bottom:4px;">${Math.abs(weightLost).toFixed(1)} kg</p>
-              <div style="color:#8a8985;font-size:11px;">
-                <div>Started: ${startWeight.toFixed(1)} kg</div>
-                <div style="color:#d97757;margin-top:4px;">↓ ${((Math.abs(weightLost)/startWeight)*100).toFixed(1)}%</div>
-              </div>
-            </div>
-            <div style="flex:1;background:#141411;border:1px solid #2a2925;border-radius:6px;padding:16px;">
-              <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:8px;">Current Weight</p>
-              <p style="color:#f5f1ed;font-size:24px;font-weight:400;margin-bottom:4px;">${currentWeight.toFixed(1)} kg</p>
-              <div style="color:#8a8985;font-size:11px;">
-                <div>Goal: ${goalWeight.toFixed(1)} kg</div>
-                <div style="margin-top:4px;">${Math.abs(weightToGoal).toFixed(1)} kg to go</div>
-              </div>
+      // Summary cards
+      const summaryCards = `
+        <div style="display:flex;gap:12px;">
+          <div style="flex:1;background:#141411;border:1px solid #2a2925;border-radius:6px;padding:16px;">
+            <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:8px;">Weight Lost</p>
+            <p style="color:#f5f1ed;font-size:24px;font-weight:400;margin-bottom:4px;">${Math.abs(weightLost).toFixed(1)} kg</p>
+            <div style="color:#8a8985;font-size:11px;">
+              <div>Started: ${startWeight.toFixed(1)} kg</div>
+              <div style="color:#d97757;margin-top:4px;">↓ ${((Math.abs(weightLost)/startWeight)*100).toFixed(1)}%</div>
             </div>
           </div>
+          <div style="flex:1;background:#141411;border:1px solid #2a2925;border-radius:6px;padding:16px;">
+            <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:8px;">Current Weight</p>
+            <p style="color:#f5f1ed;font-size:24px;font-weight:400;margin-bottom:4px;">${currentWeight.toFixed(1)} kg</p>
+            <div style="color:#8a8985;font-size:11px;">
+              ${goalWeight
+                ? `<div>Goal: ${goalWeight.toFixed(1)} kg</div>
+                   <div style="margin-top:4px;">${Math.abs(currentWeight - goalWeight).toFixed(1)} kg to go</div>`
+                : `<div>No goal set</div>`
+              }
+            </div>
+          </div>
+        </div>`;
 
+      return `
+        <div style="display:flex;flex-direction:column;gap:16px;">
+          ${summaryCards}
           <div style="background:#141411;border:1px solid #2a2925;border-radius:6px;padding:16px;">
             <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:16px;">
               Weight Trend — ${monthNames[month]} ${year}
@@ -636,72 +879,115 @@
         </div>`;
     }
 
-    // ─── Main render ─────────────────────────────────────────────────────────────
+    function renderNotesView() {
+      if (!state.allNotes || state.allNotes.length === 0) {
+        return `<div style="text-align:center;padding:40px 20px;color:#7a7570;font-size:12px;">No notes recorded yet.</div>`;
+      }
+
+      const entries = state.allNotes.map(note => {
+        const d = new Date(note.date + 'T00:00:00');
+        const label = `${dayNames[d.getDay()]}, ${monthNames[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+        return `
+          <div style="background:#141411;border:1px solid #2a2925;border-radius:4px;padding:12px 14px;margin-bottom:8px;">
+            <p style="color:#8a8985;font-size:9px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:6px;">${label}</p>
+            <p style="color:#f5f1ed;font-size:12px;line-height:1.6;white-space:pre-wrap;">${escapeHtml(note.content)}</p>
+          </div>`;
+      }).join('');
+
+      return `<div>${entries}</div>`;
+    }
+
+    // ─── Main render ──────────────────────────────────────────────────────────────
 
     function render() {
       // Prayer tab only visible if user has a Prayers habit
-      const allTabs   = ['daily','prayer','weekly','monthly','stats'];
-      const tabs      = allTabs.filter(t => t !== 'prayer' || !!state.prayerHabitId);
-      const tabLabels = { daily:'Today', prayer:'Prayers', weekly:'Week', monthly:'Month', stats:'Stats' };
-
-      // If prayer tab was active but habit was removed, fall back to daily
       if (state.activeTab === 'prayer' && !state.prayerHabitId) state.activeTab = 'daily';
 
-      let tabNav = '';
-      tabs.forEach(tab => {
-        const active  = state.activeTab === tab;
-        const color   = active ? '#f5f1ed' : '#7a7570';
-        const border  = active ? '2px solid #d97757' : '2px solid transparent';
-        const margin  = tab === 'stats' ? 'margin-left:auto;' : '';
-        tabNav += `
-          <button onclick="setActiveTab('${tab}')"
-            style="padding:6px 0;font-size:11px;background:none;border:none;border-bottom:${border};cursor:pointer;color:${color};${margin}">
+      // Tab groups with | dividers
+      const tabLabels = { daily:'Today', prayer:'Prayers', weekly:'Week', monthly:'Month', year:'Year', stats:'Stats', notes:'Notes' };
+      const groups = [
+        ['daily', 'prayer'].filter(t => t !== 'prayer' || !!state.prayerHabitId),
+        ['weekly', 'monthly', 'year'],
+        ['stats', 'notes'],
+      ];
+
+      let tabItems = [];
+      groups.forEach((group, gi) => {
+        group.forEach(tab => {
+          const active = state.activeTab === tab;
+          tabItems.push(`<button onclick="setActiveTab('${tab}')"
+            style="padding:6px 8px;font-size:11px;background:none;border:none;border-bottom:${active?'2px solid #d97757':'2px solid transparent'};cursor:pointer;color:${active?'#f5f1ed':'#7a7570'};white-space:nowrap;flex-shrink:0;">
             ${tabLabels[tab]}
-          </button>`;
+          </button>`);
+        });
+        if (gi < groups.length - 1) {
+          tabItems.push(`<span style="color:#3a3530;font-size:13px;padding:0 2px;flex-shrink:0;align-self:center;">|</span>`);
+        }
       });
 
       // Date nav bar
       let dateNavHtml = '';
-      if (state.activeTab === 'stats' || state.activeTab === 'monthly') {
+      const tab = state.activeTab;
+
+      if (tab === 'stats' || tab === 'monthly') {
         const label = `${monthNames[state.selectedDate.getMonth()]} ${state.selectedDate.getFullYear()}`;
         dateNavHtml = `
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #2a2925;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #2a2925;">
             <button onclick="changeMonth(-1)" style="background:none;border:none;color:#8a8985;cursor:pointer;font-size:18px;padding:4px 8px;">‹</button>
             <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;">${label}</p>
             <button onclick="changeMonth(1)"  style="background:none;border:none;color:#8a8985;cursor:pointer;font-size:18px;padding:4px 8px;">›</button>
           </div>`;
-      } else if (state.activeTab === 'weekly') {
+      } else if (tab === 'weekly') {
         const dow  = state.selectedDate.getDay();
         const s    = new Date(state.selectedDate); s.setDate(s.getDate() - dow);
         const e    = new Date(s); e.setDate(s.getDate() + 6);
         const label = `${monthNames[s.getMonth()]} ${s.getDate()} – ${monthNames[e.getMonth()]} ${e.getDate()}`;
         dateNavHtml = `
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #2a2925;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #2a2925;">
             <button onclick="changeDate(-7)" style="background:none;border:none;color:#8a8985;cursor:pointer;font-size:18px;padding:4px 8px;">‹</button>
             <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;">${label}</p>
             <button onclick="changeDate(7)"  style="background:none;border:none;color:#8a8985;cursor:pointer;font-size:18px;padding:4px 8px;">›</button>
           </div>`;
+      } else if (tab === 'year') {
+        dateNavHtml = `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #2a2925;">
+            <button onclick="changeYear(-1)" style="background:none;border:none;color:#8a8985;cursor:pointer;font-size:18px;padding:4px 8px;">‹</button>
+            <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;">${state.selectedDate.getFullYear()}</p>
+            <button onclick="changeYear(1)"  style="background:none;border:none;color:#8a8985;cursor:pointer;font-size:18px;padding:4px 8px;">›</button>
+          </div>`;
+      } else if (tab === 'notes') {
+        dateNavHtml = ''; // no date nav for notes
       } else {
+        // daily / prayer — tappable date label opens mini-calendar
         const isToday = new Date().toDateString() === state.selectedDate.toDateString();
         const label   = isToday
           ? 'Today'
           : `${dayNames[state.selectedDate.getDay()]}, ${monthNames[state.selectedDate.getMonth()]} ${state.selectedDate.getDate()}`;
         dateNavHtml = `
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #2a2925;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #2a2925;">
             <button onclick="changeDate(-1)" style="background:none;border:none;color:#8a8985;cursor:pointer;font-size:18px;padding:4px 8px;">‹</button>
-            <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;">${label}</p>
+            <button onclick="toggleCalendar()"
+              style="background:none;border:none;cursor:pointer;padding:4px 8px;display:flex;align-items:center;gap:5px;">
+              <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;">${label}</p>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#5a5955" stroke-width="2">
+                <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+              </svg>
+            </button>
             <button onclick="changeDate(1)"  style="background:none;border:none;color:#8a8985;cursor:pointer;font-size:18px;padding:4px 8px;">›</button>
           </div>`;
       }
 
       let content = '';
-      if      (state.activeTab === 'daily')   content = renderDailyView();
-      else if (state.activeTab === 'prayer')  content = renderPrayerView();
-      else if (state.activeTab === 'weekly')  content = renderWeeklyView();
-      else if (state.activeTab === 'monthly') content = renderMonthlyView();
-      else if (state.activeTab === 'stats')   content = renderStatsView();
+      if      (tab === 'daily')   content = renderDailyView();
+      else if (tab === 'prayer')  content = renderPrayerView();
+      else if (tab === 'weekly')  content = renderWeeklyView();
+      else if (tab === 'monthly') content = renderMonthlyView();
+      else if (tab === 'year')    content = renderYearView();
+      else if (tab === 'stats')   content = renderStatsView();
+      else if (tab === 'notes')   content = renderNotesView();
 
       document.getElementById('root').innerHTML = `
+        ${renderCalendarOverlay()}
         <div class="container">
           <div style="position:sticky;top:0;background:#0a0a0a;border-bottom:1px solid #2a2925;z-index:10;">
             <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #2a2925;">
@@ -719,8 +1005,8 @@
               </button>
             </div>
             ${dateNavHtml}
-            <div style="display:flex;gap:14px;border-bottom:1px solid #2a2925;padding:0 14px;align-items:center;">
-              ${tabNav}
+            <div style="display:flex;gap:0;border-bottom:1px solid #2a2925;padding:0 14px;align-items:center;overflow-x:auto;">
+              ${tabItems.join('')}
             </div>
           </div>
           <div style="padding:12px 14px;max-width:480px;margin:0 auto;">
@@ -729,7 +1015,7 @@
         </div>`;
     }
 
-    // ─── Boot ────────────────────────────────────────────────────────────────────
+    // ─── Boot ─────────────────────────────────────────────────────────────────────
 
     async function initApp() {
       const { data: { session } } = await db.auth.getSession();
@@ -739,16 +1025,19 @@
       }
       currentUser = session.user;
 
+      // Load weight goal from user metadata
+      const rawGoal = currentUser.user_metadata?.weight_goal;
+      state.weightGoal = rawGoal ? parseFloat(rawGoal) : null;
+
       const { data: habits } = await db.from('habits')
         .select('*')
+        .eq('user_id', currentUser.id)
         .eq('archived', false)
         .order('sort_order');
 
       state.habits = habits || [];
 
-      // Identify special habit IDs
       state.prayerHabitId = state.habits.find(h => h.name === 'Prayers')?.id || null;
-      // Weight habit: number type with kg unit or "weight" in name
       state.weightHabitId = state.habits.find(h =>
         h.type === 'number' && (h.unit === 'kg' || h.name.toLowerCase().includes('weight'))
       )?.id || null;
