@@ -37,9 +37,14 @@
   <div id="root"></div>
 
   <script>
+    function dateKey(date) {
+      return date.toISOString().split('T')[0];
+    }
+
     let state = {
       activeTab: 'daily',
       selectedDate: new Date(2026, 7, 12), // August 12, 2026 (Wednesday)
+      dailyNotes: {},
       completedHabits: {
         'morning-skincare': true,
         'wakeup-time': '00:00',
@@ -74,21 +79,21 @@
     };
 
     const habitsMetadata = {
-      'morning-skincare': { label: 'Morning skincare', type: 'yes/no', freq: 'daily' },
-      'wakeup-time': { label: 'Wake-up time', type: 'number', freq: 'daily' },
-      'turmeric-drink': { label: 'Turmeric drink', type: 'yes/no', freq: 'daily' },
-      'evening-skincare': { label: 'Evening skincare', type: 'yes/no', freq: 'daily' },
-      'evening-vitamins': { label: 'Evening vitamins', type: 'yes/no', freq: 'daily' },
-      'daily-weight': { label: 'Daily weight', type: 'number', freq: 'daily' },
-      'prayer': { label: 'Prayers', type: 'yes/no', freq: 'daily' },
-      'horseback-riding': { label: 'Horseback riding', type: 'yes/no', freq: 'weekly', days: [0, 2, 4] },
-      'litter-change': { label: 'Cat litter', type: 'yes/no', freq: 'weekly', days: [6] },
-      'water-fountain': { label: 'Water fountain', type: 'yes/no', freq: 'weekly', days: [6] },
-      'cat-grooming': { label: 'Cat grooming', type: 'yes/no', freq: 'weekly', days: [6] },
-      'pill-dispenser': { label: 'Pill dispenser refill', type: 'yes/no', freq: 'weekly', days: [6] },
-      'weight-loss-med': { label: 'Weight loss medication', type: 'yes/no', freq: 'weekly' },
-      'house-cleaning': { label: 'House cleaning', type: 'yes/no', freq: 'weekly' },
-      'hair-mask': { label: 'Hair mask', type: 'yes/no', freq: 'weekly' },
+      'morning-skincare': { label: 'Morning skincare', type: 'yes/no', freq: 'daily', section: 'morning' },
+      'wakeup-time':      { label: 'Wake-up time',     type: 'number',  freq: 'daily', section: 'morning' },
+      'turmeric-drink':   { label: 'Turmeric drink',   type: 'yes/no',  freq: 'daily', section: 'morning' },
+      'daily-weight':     { label: 'Daily weight',     type: 'number',  freq: 'daily', section: 'morning' },
+      'evening-skincare': { label: 'Evening skincare', type: 'yes/no',  freq: 'daily', section: 'evening' },
+      'evening-vitamins': { label: 'Evening vitamins', type: 'yes/no',  freq: 'daily', section: 'evening' },
+      'prayer':           { label: 'Prayers',          type: 'yes/no',  freq: 'daily', section: 'prayer'  },
+      'horseback-riding': { label: 'Horseback riding', type: 'yes/no',  freq: 'weekly', days: [0, 2, 4] },
+      'litter-change':    { label: 'Cat litter',       type: 'yes/no',  freq: 'weekly', days: [6] },
+      'water-fountain':   { label: 'Water fountain',   type: 'yes/no',  freq: 'weekly', days: [6] },
+      'cat-grooming':     { label: 'Cat grooming',     type: 'yes/no',  freq: 'weekly', days: [6] },
+      'pill-dispenser':   { label: 'Pill dispenser refill', type: 'yes/no', freq: 'weekly', days: [6] },
+      'weight-loss-med':  { label: 'Weight loss medication', type: 'yes/no', freq: 'weekly' },
+      'house-cleaning':   { label: 'House cleaning',   type: 'yes/no',  freq: 'weekly' },
+      'hair-mask':        { label: 'Hair mask',        type: 'yes/no',  freq: 'weekly' },
     };
 
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -221,68 +226,80 @@
 
     function renderDailyView() {
       const dayOfWeek = state.selectedDate.getDay();
-      
-      const sections = {
-        'Morning': ['morning-skincare', 'wakeup-time', 'daily-weight', 'turmeric-drink'],
-        'Evening': ['evening-skincare', 'evening-vitamins'],
-        'Prayer': ['prayer'],
+      const key = dateKey(state.selectedDate);
+
+      // Build sections dynamically from habitsMetadata
+      const morningHabits = state.visibleHabits.filter(id => habitsMetadata[id]?.section === 'morning');
+      const eveningHabits = state.visibleHabits.filter(id => habitsMetadata[id]?.section === 'evening');
+
+      // Horseback riding appended to evening on Sun/Tue/Thu
+      if ([0, 2, 4].includes(dayOfWeek) && state.visibleHabits.includes('horseback-riding')) {
+        eveningHabits.push('horseback-riding');
+      }
+
+      const prayerHabit = state.visibleHabits.includes('prayer');
+
+      const allPrayersComplete = !isFutureDate() && Object.values(state.prayersCompleted).every(v => v);
+
+      const renderSection = (title, habitIds) => {
+        if (habitIds.length === 0) return '';
+        return `
+          <div>
+            <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 6px; text-transform: uppercase;">${title}</p>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              ${habitIds.map(id => renderHabitItem(id)).join('')}
+            </div>
+          </div>`;
       };
 
-      // Add horseback riding to evening if it's Sun/Tue/Thu
-      if ([0, 2, 4].includes(dayOfWeek)) {
-        sections['Evening'].push('horseback-riding');
-      }
+      const prayerRow = prayerHabit ? `
+        <div>
+          <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 6px; text-transform: uppercase;">Prayer</p>
+          <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #141411; border-radius: 4px; border: 1px solid #2a2925;">
+            <div style="flex: 1;"><p style="color: #f5f1ed; font-size: 12px; font-weight: 400;">Prayers</p></div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <div style="width: 6px; height: 6px; border-radius: 50%; background: ${allPrayersComplete ? '#d97757' : '#444441'};"></div>
+              <span style="color: #8a8985; font-size: 11px;">${allPrayersComplete ? 'Complete' : 'Incomplete'}</span>
+            </div>
+          </div>
+        </div>` : '';
 
-      let html = `<div style="display: flex; flex-direction: column; gap: 12px;">`;
+      // Saturday weekly cat tasks
+      const weeklyRow = dayOfWeek === 6 ? `
+        <div>
+          <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 6px; text-transform: uppercase;">Weekly</p>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            ${['litter-change', 'water-fountain', 'cat-grooming', 'pill-dispenser'].map(id => renderHabitItem(id)).join('')}
+          </div>
+        </div>` : '';
 
-      Object.entries(sections).forEach(([section, habits]) => {
-        const visibleInSection = habits.filter(h => state.visibleHabits.includes(h) || h === 'prayer' || h === 'horseback-riding');
-        if (visibleInSection.length === 0) return;
+      // Notes box
+      const savedNote = state.dailyNotes[key] || '';
+      const notesRow = `
+        <div>
+          <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 6px; text-transform: uppercase;">Notes</p>
+          <textarea
+            id="dailyNotesInput"
+            onchange="saveNote(this.value)"
+            placeholder="Add a note for today…"
+            style="width: 100%; background: #141411; border: 1px solid #2a2925; color: #f5f1ed; border-radius: 4px; padding: 9px 12px; font-size: 12px; font-family: inherit; resize: none; min-height: 72px; outline: none; transition: border-color 0.2s;"
+            onfocus="this.style.borderColor='#d97757'"
+            onblur="this.style.borderColor='#2a2925'"
+          >${savedNote}</textarea>
+        </div>`;
 
-        html += `
-          <div>
-            <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 6px; text-transform: uppercase;">${section}</p>
-            <div style="display: flex; flex-direction: column; gap: 6px;">
-        `;
+      return `<div style="display: flex; flex-direction: column; gap: 12px;">
+        ${renderSection('Morning', morningHabits)}
+        ${renderSection('Evening', eveningHabits)}
+        ${prayerRow}
+        ${weeklyRow}
+        ${notesRow}
+      </div>`;
+    }
 
-        visibleInSection.forEach(habitId => {
-          if (habitId === 'prayer') {
-            // Prayer is read-only, just shows status
-            const allPrayersComplete = !isFutureDate() && Object.values(state.prayersCompleted).every(v => v);
-            html += `
-              <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #141411; border-radius: 4px; border: 1px solid #2a2925;">
-                <div style="flex: 1;">
-                  <p style="color: #f5f1ed; font-size: 12px; font-weight: 400;">Prayers</p>
-                </div>
-                <div style="display: flex; align-items: center; gap: 6px;">
-                  <div style="width: 6px; height: 6px; border-radius: 50%; background: ${allPrayersComplete ? '#d97757' : '#444441'};"></div>
-                  <span style="color: #8a8985; font-size: 11px;">${allPrayersComplete ? 'Complete' : 'Incomplete'}</span>
-                </div>
-              </div>
-            `;
-          } else {
-            html += renderHabitItem(habitId);
-          }
-        });
-
-        html += `</div></div>`;
-      });
-
-      // Add weekly tasks (cat activities) at bottom on Saturday only
-      if (dayOfWeek === 6) {
-        html += `
-          <div>
-            <p style="color: #8a8985; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 6px; text-transform: uppercase;">Weekly</p>
-            <div style="display: flex; flex-direction: column; gap: 6px;">
-        `;
-        ['litter-change', 'water-fountain', 'cat-grooming', 'pill-dispenser'].forEach(habitId => {
-          html += renderHabitItem(habitId);
-        });
-        html += `</div></div>`;
-      }
-
-      html += `</div>`;
-      return html;
+    function saveNote(value) {
+      const key = dateKey(state.selectedDate);
+      state.dailyNotes[key] = value;
     }
 
     function renderPrayerView() {

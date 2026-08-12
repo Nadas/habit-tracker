@@ -253,6 +253,23 @@
       </div>
     </div>
 
+    <!-- CONDITIONAL: Daily Section (appears when Daily is selected) -->
+    <div class="conditional visible" id="dailySectionField">
+      <div class="form-section">
+        <label>Section</label>
+        <div class="radio-group">
+          <div class="radio-option">
+            <input type="radio" id="section-morning" name="section" value="morning" checked />
+            <label for="section-morning">Morning</label>
+          </div>
+          <div class="radio-option">
+            <input type="radio" id="section-evening" name="section" value="evening" />
+            <label for="section-evening">Evening</label>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- CONDITIONAL: Number Type Unit (appears when Number is selected) -->
     <div class="conditional" id="unitSection">
       <div class="form-section">
@@ -472,6 +489,11 @@
           if (monthButton) monthButton.classList.add('selected');
         }
 
+        if (habit.section) {
+          const sectionRadio = document.getElementById(`section-${habit.section}`);
+          if (sectionRadio) sectionRadio.checked = true;
+        }
+
         updateConditionalSections(habit.freq);
       } catch (error) {
         console.error('Error loading habit data:', error);
@@ -481,7 +503,7 @@
     function updateConditionalSections(frequency) {
       try {
         const sections = {
-          'daily': [],
+          'daily': ['dailySectionField'],
           'weekly': ['weeklySection'],
           'monthly': ['monthlySection'],
           'quarterly': ['quarterlySection']
@@ -553,6 +575,10 @@
 
         if (frequency === 'quarterly') {
           config.startMonth = selectedQuarter;
+        }
+
+        if (frequency === 'daily') {
+          config.section = document.querySelector('input[name="section"]:checked').value;
         }
 
         console.log(`${mode === 'edit' ? 'Habit updated' : 'Habit created'}:`, config);

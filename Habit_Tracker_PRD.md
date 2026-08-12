@@ -2,11 +2,29 @@
 
 **Owner:** Nada
 **Purpose:** A minimal, personal, single-user web application to track daily discipline and recurring routines, without pressure, scoring, or clutter.
-**Status:** Draft v3
+**Status:** Draft v4
 
 ---
 
 ## Version History
+
+### v4 (August 12, 2026)
+**New features:**
+- ✅ Added `section` field (Morning / Evening) to habit model — daily habits now belong to a named section chosen at creation time
+- ✅ Daily view sections are now fully dynamic — built from each habit's `section` field instead of a hardcoded list; adding a new daily habit automatically places it in the correct section
+- ✅ Habit form now shows a Morning / Evening picker when Daily frequency is selected; hidden for all other frequencies
+- ✅ Added Notes text box at the bottom of the Daily view — per-date, persists while navigating (will sync to database post-Supabase)
+- ✅ Fixed drag-and-drop reordering on mobile — HTML5 drag API doesn't work on touch screens; added full touch event implementation (`touchstart`, `touchmove`, `touchend`) with a floating clone that follows the finger; prevents browser text-selection and context menu on long press
+
+**Backend design (sort order):**
+- ✅ Reorder strategy confirmed: integer `sort_order` index stored per habit; after a drag, all affected rows updated in a single batch; daily view always fetches habits ordered by `sort_order` — so reordering in Manage Habits reflects automatically everywhere
+
+**Files Updated:**
+- `habit_tracker_mockup.html` — dynamic Morning/Evening sections, Notes textarea, `section` field in habitsMetadata
+- `habit_tracker_habit_form.html` — Morning/Evening section picker for daily habits
+- `habit_tracker_manage_habits_mockup.html` — touch drag-and-drop support for mobile
+
+---
 
 ### v3 (August 12, 2026)
 **Bug fixes & UI improvements:**
@@ -138,9 +156,10 @@ This is a personal accountability tool, not a gamified productivity app. The cor
 | frequency | text | 'daily', 'weekly', 'monthly', 'quarterly' |
 | type | text | 'yes/no' or 'number' |
 | unit | text | e.g. 'kg', 'am' (optional) |
+| section | text | 'morning' or 'evening' — daily habits only |
 | days | int[] | For weekly habits, e.g. [0, 2, 4] |
 | day | int | For monthly habits (day of month) |
-| sort_order | int | User-defined drag-and-drop order |
+| sort_order | int | User-defined drag-and-drop order (integer index; batch-updated after each reorder) |
 | archived | boolean | Soft delete / pause |
 | created_at | timestamp | Auto-set |
 
