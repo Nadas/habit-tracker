@@ -163,7 +163,7 @@
       const { error } = await db.auth.signInWithPassword({ email, password });
 
       if (error) {
-        errorEl.textContent = 'Incorrect email or password.';
+        errorEl.textContent = error.message;
         errorEl.classList.add('visible');
         btnText.textContent = 'Sign In';
         spinner.classList.remove('visible');
