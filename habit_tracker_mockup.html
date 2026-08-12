@@ -42,7 +42,7 @@
       selectedDate: new Date(2026, 7, 12), // August 12, 2026 (Wednesday)
       completedHabits: {
         'morning-skincare': true,
-        'wakeup-time': true,
+        'wakeup-time': '00:00',
         'turmeric-drink': true,
         'evening-skincare': true,
         'evening-vitamins': false,
@@ -157,9 +157,32 @@
       window.location.href = 'habit_tracker_profile.html';
     }
 
+    function goToToday() {
+      state.selectedDate = new Date();
+      state.activeTab = 'daily';
+      render();
+    }
+
+    function isFutureDate() {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const selected = new Date(state.selectedDate);
+      selected.setHours(0, 0, 0, 0);
+      return selected > today;
+    }
+
+    function getHabitValue(habitId) {
+      if (isFutureDate()) {
+        const habit = habitsMetadata[habitId];
+        if (habit.type === 'number') return habitId === 'wakeup-time' ? '00:00' : null;
+        return false;
+      }
+      return state.completedHabits[habitId];
+    }
+
     function renderHabitItem(habitId) {
       const habit = habitsMetadata[habitId];
-      const value = state.completedHabits[habitId];
+      const value = getHabitValue(habitId);
 
       if (habit.type === 'number') {
         let suffix = '';
@@ -170,7 +193,7 @@
           placeholder = '0.0';
         } else if (habitId === 'wakeup-time') {
           suffix = 'am';
-          placeholder = '6:30';
+          placeholder = '00:00';
           step = 'any';
         }
 
@@ -225,7 +248,7 @@
         visibleInSection.forEach(habitId => {
           if (habitId === 'prayer') {
             // Prayer is read-only, just shows status
-            const allPrayersComplete = Object.values(state.prayersCompleted).every(v => v);
+            const allPrayersComplete = !isFutureDate() && Object.values(state.prayersCompleted).every(v => v);
             html += `
               <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #141411; border-radius: 4px; border: 1px solid #2a2925;">
                 <div style="flex: 1;">
@@ -271,7 +294,7 @@
         { id: 'isha', label: 'Isha' },
       ];
 
-      const allComplete = Object.values(state.prayersCompleted).every(v => v);
+      const allComplete = !isFutureDate() && Object.values(state.prayersCompleted).every(v => v);
 
       let html = `
         <div style="display: flex; flex-direction: column; gap: 10px;">
@@ -286,7 +309,7 @@
       `;
 
       prayers.forEach(prayer => {
-        const isCompleted = state.prayersCompleted[prayer.id];
+        const isCompleted = !isFutureDate() && state.prayersCompleted[prayer.id];
         html += `
           <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #141411; border-radius: 4px; border: 1px solid #2a2925;">
             <div style="flex: 1;">
@@ -479,8 +502,11 @@
       let xAxisLabels = '';
       for (let i = 0; i < monthData.length; i += 5) {
         const x = paddingLeft + (i / (monthData.length - 1)) * innerWidth;
-        xAxisLabels += `<text x="${x}" y="${chartHeight - 10}" font-size="8" fill="#8a8985" text-anchor="middle">${monthData[i].date}</text>`;
+        xAxisLabels += `<text x="${x}" y="${paddingTop + innerHeight + 16}" font-size="9" fill="#8a8985" text-anchor="middle">${monthData[i].date}</text>`;
       }
+      // Also show last day
+      const lastX = paddingLeft + innerWidth;
+      xAxisLabels += `<text x="${lastX}" y="${paddingTop + innerHeight + 16}" font-size="9" fill="#8a8985" text-anchor="middle">${monthData[monthData.length - 1].date}</text>`;
 
       const lineChart = `
         <svg viewBox="0 0 ${chartWidth} ${chartHeight}" style="width: 100%; height: 240px;">
@@ -498,9 +524,6 @@
           
           <!-- X-axis labels (days) -->
           ${xAxisLabels}
-          
-          <!-- Y-axis label -->
-          <text x="12" y="30" font-size="9" fill="#8a8985" font-weight="600">kg</text>
           
           <!-- Trend line -->
           <polyline points="${points}" fill="none" stroke="#d97757" stroke-width="2" opacity="0.9"/>
@@ -656,9 +679,23 @@
           <div style="position: sticky; top: 0; background: #0a0a0a; border-bottom: 1px solid #2a2925; z-index: 10;">
             <!-- Header with Settings Button -->
             <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid #2a2925;">
-              <button onclick="goToProfile()" style="background: none; border: none; color: #8a8985; cursor: pointer; font-size: 16px; padding: 4px 8px;">👤</button>
-              <h1 style="font-size: 14px; font-weight: 400; margin: 0;">Discipline</h1>
-              <button onclick="goToSettings()" style="background: none; border: none; color: #8a8985; cursor: pointer; font-size: 16px; padding: 4px 8px;">⚙</button>
+              <button onclick="goToProfile()" style="background: none; border: none; color: #8a8985; cursor: pointer; padding: 4px 8px; display: flex; align-items: center;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="8" r="4"/>
+                  <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+                </svg>
+              </button>
+              <h1 onclick="goToToday()" style="font-size: 14px; font-weight: 400; margin: 0; cursor: pointer;">Discipline</h1>
+              <button onclick="goToSettings()" style="background: none; border: none; color: #8a8985; cursor: pointer; padding: 4px 8px; display: flex; align-items: center;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="4" y1="6" x2="20" y2="6"/>
+                  <line x1="4" y1="12" x2="20" y2="12"/>
+                  <line x1="4" y1="18" x2="20" y2="18"/>
+                  <circle cx="8" cy="6" r="2" fill="#0a0a0a"/>
+                  <circle cx="16" cy="12" r="2" fill="#0a0a0a"/>
+                  <circle cx="10" cy="18" r="2" fill="#0a0a0a"/>
+                </svg>
+              </button>
             </div>
 
             <!-- Date Navigation -->

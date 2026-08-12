@@ -78,6 +78,13 @@
       background: #1a1714;
       opacity: 0.8;
     }
+    .habit-item.drag-over {
+      border-color: #d97757;
+      background: #1a1714;
+    }
+    .habit-item.dragging {
+      opacity: 0.4;
+    }
     .drag-handle {
       color: #7a7570;
       font-size: 14px;
@@ -158,30 +165,6 @@
       background: #d97757;
       border-color: #d97757;
       color: #0a0a0a;
-    }
-    .archived-toggle {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 14px;
-      background: #141411;
-      border: 1px solid #2a2925;
-      border-radius: 4px;
-      cursor: pointer;
-      margin-bottom: 12px;
-    }
-    .archived-toggle input[type="checkbox"] {
-      width: 16px;
-      height: 16px;
-      cursor: pointer;
-      accent-color: #d97757;
-    }
-    .archived-toggle label {
-      flex: 1;
-      cursor: pointer;
-      color: #8a8985;
-      font-size: 12px;
-      margin: 0;
     }
     .empty-state {
       text-align: center;
@@ -269,12 +252,6 @@
 
     <!-- Content -->
     <div class="content">
-      <!-- Show Archived Toggle -->
-      <div class="archived-toggle" id="archivedToggle">
-        <input type="checkbox" id="showArchived" onchange="toggleArchived()" />
-        <label for="showArchived">Show archived habits</label>
-      </div>
-
       <!-- DAILY HABITS -->
       <div class="section" id="dailySection">
         <div class="section-title">
@@ -335,9 +312,8 @@
   </div>
 
   <script>
-    let showArchivedHabits = false;
     let deletingId = null;
-    let draggedItem = null;
+    let draggedId = null;
 
     const habits = [
       // Daily
@@ -432,24 +408,53 @@
         }
 
         if (freq === 'archived') {
-          section.style.display = showArchivedHabits ? 'block' : 'none';
+          section.style.display = 'block';
         }
       });
 
       // Add drag listeners
       document.querySelectorAll('.habit-item').forEach(item => {
         item.addEventListener('dragstart', (e) => {
-          draggedItem = e.currentTarget;
+          draggedId = e.currentTarget.dataset.id;
+          e.currentTarget.classList.add('dragging');
+          e.dataTransfer.effectAllowed = 'move';
         });
-        item.addEventListener('dragend', () => {
-          draggedItem = null;
+        item.addEventListener('dragend', (e) => {
+          e.currentTarget.classList.remove('dragging');
+          document.querySelectorAll('.habit-item').forEach(el => el.classList.remove('drag-over'));
+          draggedId = null;
+        });
+        item.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          if (e.currentTarget.dataset.id !== draggedId) {
+            e.currentTarget.classList.add('drag-over');
+          }
+        });
+        item.addEventListener('dragleave', (e) => {
+          e.currentTarget.classList.remove('drag-over');
+        });
+        item.addEventListener('drop', (e) => {
+          e.preventDefault();
+          e.currentTarget.classList.remove('drag-over');
+          const targetId = e.currentTarget.dataset.id;
+          if (!draggedId || draggedId === targetId) return;
+
+          const draggedHabit = habits.find(h => h.id === draggedId);
+          const targetHabit = habits.find(h => h.id === targetId);
+          if (!draggedHabit || !targetHabit) return;
+
+          // Only allow reordering within the same frequency group
+          if (draggedHabit.freq !== targetHabit.freq || draggedHabit.archived !== targetHabit.archived) return;
+
+          const draggedIdx = habits.indexOf(draggedHabit);
+          habits.splice(draggedIdx, 1);
+          const newTargetIdx = habits.indexOf(targetHabit);
+          habits.splice(newTargetIdx, 0, draggedHabit);
+
+          render();
         });
       });
-    }
-
-    function toggleArchived() {
-      showArchivedHabits = document.getElementById('showArchived').checked;
-      render();
     }
 
     function goToEdit(id) {

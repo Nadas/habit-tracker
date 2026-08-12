@@ -58,8 +58,15 @@
       margin-bottom: 16px;
     }
     .profile-avatar {
-      font-size: 48px;
-      margin-bottom: 12px;
+      width: 56px;
+      height: 56px;
+      background: #2a2925;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 12px;
+      color: #8a8985;
     }
     .profile-name {
       font-size: 16px;
@@ -103,6 +110,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      cursor: pointer;
     }
     .setting-label {
       font-size: 12px;
@@ -122,6 +130,7 @@
       cursor: pointer;
       position: relative;
       transition: background 0.2s;
+      flex-shrink: 0;
     }
     .toggle-switch.on {
       background: #d97757;
@@ -147,7 +156,7 @@
       letter-spacing: 0.5px;
       text-transform: uppercase;
       margin-top: 20px;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
     }
     .danger-button {
       width: 100%;
@@ -159,6 +168,7 @@
       cursor: pointer;
       font-size: 12px;
       font-weight: 500;
+      font-family: inherit;
       transition: all 0.2s;
       margin-top: 20px;
       margin-bottom: 40px;
@@ -182,11 +192,15 @@
     <div class="content">
       <!-- Profile Section -->
       <div class="profile-section">
-        <div class="profile-avatar">👤</div>
+        <div class="profile-avatar">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="8" r="4"/>
+            <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+          </svg>
+        </div>
         <div class="profile-name">Nada</div>
         <div class="profile-email">nada@example.com</div>
-        
-        <!-- Quick Stats -->
+
         <div class="profile-stats">
           <div class="stat">
             <div class="stat-value">28</div>
@@ -206,7 +220,7 @@
       <!-- Preferences Section -->
       <div class="section-title">Preferences</div>
 
-      <div class="settings-card">
+      <div class="settings-card" onclick="event.stopPropagation()">
         <div>
           <div class="setting-label">Reminders</div>
           <div class="setting-description">Get daily habit reminders</div>
@@ -214,29 +228,21 @@
         <button class="toggle-switch on" onclick="toggleReminders(this)"></button>
       </div>
 
-      <div class="settings-card">
+      <div class="settings-card" style="cursor: default;">
         <div>
           <div class="setting-label">Dark Theme</div>
           <div class="setting-description">Always enabled</div>
         </div>
-        <button class="toggle-switch on" onclick="toggleTheme(this)" disabled style="opacity: 0.5; cursor: default;"></button>
+        <button class="toggle-switch on" disabled style="opacity: 0.5; cursor: default;"></button>
       </div>
 
       <!-- Account Section -->
       <div class="section-title">Account</div>
 
-      <div class="settings-card" onclick="editProfile()" style="cursor: pointer;">
+      <div class="settings-card" onclick="goToEditProfile()">
         <div>
           <div class="setting-label">Edit Profile</div>
-          <div class="setting-description">Update your information</div>
-        </div>
-        <span style="color: #8a8985; font-size: 14px;">›</span>
-      </div>
-
-      <div class="settings-card" onclick="changePassword()" style="cursor: pointer;">
-        <div>
-          <div class="setting-label">Change Password</div>
-          <div class="setting-description">Update your password</div>
+          <div class="setting-description">Update your info and password</div>
         </div>
         <span style="color: #8a8985; font-size: 14px;">›</span>
       </div>
@@ -251,30 +257,16 @@
       window.location.href = 'habit_tracker_mockup.html';
     }
 
+    function goToEditProfile() {
+      window.location.href = 'habit_tracker_edit_profile.html';
+    }
+
     function toggleReminders(button) {
       button.classList.toggle('on');
-      const state = button.classList.contains('on') ? 'enabled' : 'disabled';
-      console.log('Reminders ' + state);
-    }
-
-    function toggleTheme(button) {
-      // Theme is always on - disabled toggle
-    }
-
-    function editProfile() {
-      alert('Edit profile functionality would open a form to update name, email, etc.');
-    }
-
-    function changePassword() {
-      alert('Change password functionality would open a secure form');
     }
 
     function logout() {
       if (confirm('Are you sure you want to logout?')) {
-        // Clear session
-        localStorage.removeItem('rememberMe');
-        localStorage.removeItem('username');
-        // Redirect to login
         window.location.href = 'habit_tracker_login.html';
       }
     }

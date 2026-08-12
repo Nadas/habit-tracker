@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Habit Tracker - Edit Profile</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: #0a0a0a;
+      color: #f5f1ed;
+    }
+    .container {
+      min-height: 100vh;
+      background: #0a0a0a;
+    }
+    .header {
+      position: sticky;
+      top: 0;
+      background: #0a0a0a;
+      border-bottom: 1px solid #2a2925;
+      padding: 12px 14px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .header button {
+      background: none;
+      border: none;
+      color: #8a8985;
+      cursor: pointer;
+      font-size: 18px;
+      padding: 4px;
+    }
+    .header h1 {
+      font-size: 14px;
+      font-weight: 400;
+      flex: 1;
+      margin: 0;
+    }
+    .content {
+      padding: 12px 14px;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+    .section-title {
+      color: #8a8985;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    .form-section {
+      background: #141411;
+      border: 1px solid #2a2925;
+      border-radius: 6px;
+      padding: 14px;
+      margin-bottom: 16px;
+    }
+    .form-group {
+      margin-bottom: 10px;
+    }
+    .form-group:last-child {
+      margin-bottom: 0;
+    }
+    .form-label {
+      font-size: 10px;
+      color: #8a8985;
+      margin-bottom: 5px;
+      display: block;
+    }
+    .form-input {
+      width: 100%;
+      background: #0a0a0a;
+      border: 1px solid #2a2925;
+      color: #f5f1ed;
+      padding: 9px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: inherit;
+      transition: border-color 0.2s;
+      outline: none;
+    }
+    .form-input:focus {
+      border-color: #d97757;
+    }
+    .divider {
+      border: none;
+      border-top: 1px solid #2a2925;
+      margin: 14px 0;
+    }
+    .error-text {
+      font-size: 10px;
+      color: #d97757;
+      margin-top: 4px;
+      display: none;
+    }
+    .save-button {
+      width: 100%;
+      padding: 10px;
+      background: #d97757;
+      border: none;
+      border-radius: 4px;
+      color: #0a0a0a;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: inherit;
+      transition: opacity 0.2s;
+      margin-bottom: 40px;
+    }
+    .save-button:hover {
+      opacity: 0.9;
+    }
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #2a2925;
+      color: #f5f1ed;
+      padding: 9px 16px;
+      border-radius: 4px;
+      font-size: 12px;
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    .toast.visible {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <button onclick="goBack()">←</button>
+      <h1>Edit Profile</h1>
+      <div style="width: 28px;"></div>
+    </div>
+
+    <!-- Content -->
+    <div class="content">
+
+      <!-- Profile Info -->
+      <div class="section-title">Profile Info</div>
+      <div class="form-section">
+        <div class="form-group">
+          <label class="form-label">Name</label>
+          <input class="form-input" type="text" id="inputName" value="Nada" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input class="form-input" type="email" id="inputEmail" value="nada@example.com" />
+        </div>
+      </div>
+
+      <!-- Change Password -->
+      <div class="section-title">Change Password</div>
+      <div class="form-section">
+        <div class="form-group">
+          <label class="form-label">Current Password</label>
+          <input class="form-input" type="password" id="inputCurrentPassword" placeholder="Enter current password" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">New Password</label>
+          <input class="form-input" type="password" id="inputNewPassword" placeholder="Enter new password" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Confirm New Password</label>
+          <input class="form-input" type="password" id="inputConfirmPassword" placeholder="Confirm new password" />
+          <div class="error-text" id="passwordError">Passwords don't match</div>
+        </div>
+      </div>
+
+      <button class="save-button" onclick="saveChanges()">Save Changes</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    function goBack() {
+      window.location.href = 'habit_tracker_profile.html';
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.classList.add('visible');
+      setTimeout(() => toast.classList.remove('visible'), 2500);
+    }
+
+    function saveChanges() {
+      const newPass = document.getElementById('inputNewPassword').value;
+      const confirm = document.getElementById('inputConfirmPassword').value;
+      const passwordError = document.getElementById('passwordError');
+
+      // Validate passwords only if any password field is filled
+      if (newPass || confirm) {
+        if (newPass !== confirm) {
+          passwordError.style.display = 'block';
+          document.getElementById('inputConfirmPassword').focus();
+          return;
+        }
+      }
+      passwordError.style.display = 'none';
+
+      // Clear password fields after save
+      document.getElementById('inputCurrentPassword').value = '';
+      document.getElementById('inputNewPassword').value = '';
+      document.getElementById('inputConfirmPassword').value = '';
+
+      showToast('Changes saved');
+    }
+  </script>
+</body>
+</html>
