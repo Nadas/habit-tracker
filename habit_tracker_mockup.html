@@ -911,19 +911,20 @@
         ['stats', 'notes'],
       ];
 
-      let tabItems = [];
-      groups.forEach((group, gi) => {
-        group.forEach(tab => {
+      function renderTabGroup(tabs) {
+        return tabs.map(tab => {
           const active = state.activeTab === tab;
-          tabItems.push(`<button onclick="setActiveTab('${tab}')"
-            style="padding:6px 8px;font-size:11px;background:none;border:none;border-bottom:${active?'2px solid #d97757':'2px solid transparent'};cursor:pointer;color:${active?'#f5f1ed':'#7a7570'};white-space:nowrap;flex-shrink:0;">
+          return `<button onclick="setActiveTab('${tab}')"
+            style="padding:6px 6px;font-size:11px;background:none;border:none;border-bottom:${active?'2px solid #d97757':'2px solid transparent'};cursor:pointer;color:${active?'#f5f1ed':'#7a7570'};white-space:nowrap;">
             ${tabLabels[tab]}
-          </button>`);
-        });
-        if (gi < groups.length - 1) {
-          tabItems.push(`<span style="color:#3a3530;font-size:13px;padding:0 2px;flex-shrink:0;align-self:center;">|</span>`);
-        }
-      });
+          </button>`;
+        }).join('');
+      }
+      const tabGroupAligns = ['flex-start', 'center', 'flex-end'];
+      const tabGroupDivs = groups.map((group, gi) =>
+        `<div style="display:flex;align-items:center;justify-content:${tabGroupAligns[gi]};flex:1;">${renderTabGroup(group)}</div>`
+      );
+      const tabPipe = `<span style="color:#3a3530;font-size:13px;align-self:center;flex-shrink:0;">|</span>`;
 
       // Date nav bar
       let dateNavHtml = '';
@@ -1005,8 +1006,8 @@
               </button>
             </div>
             ${dateNavHtml}
-            <div style="display:flex;gap:0;border-bottom:1px solid #2a2925;padding:0 14px;align-items:center;overflow-x:auto;">
-              ${tabItems.join('')}
+            <div style="display:flex;border-bottom:1px solid #2a2925;padding:0 10px;align-items:stretch;">
+              ${tabGroupDivs[0]}${tabPipe}${tabGroupDivs[1]}${tabPipe}${tabGroupDivs[2]}
             </div>
           </div>
           <div style="padding:12px 14px;max-width:480px;margin:0 auto;">
