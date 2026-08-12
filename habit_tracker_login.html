@@ -130,6 +130,12 @@
           <span id="buttonText">Sign In</span>
           <span class="spinner" id="loadingSpinner"></span>
         </button>
+
+        <button type="button" class="login-button" id="signupButton" onclick="handleSignup()"
+          style="background:#2a2925;color:#8a8985;margin-top:8px;">
+          <span id="signupText">Create Account</span>
+          <span class="spinner" id="signupSpinner"></span>
+        </button>
       </form>
     </div>
   </div>
@@ -163,7 +169,7 @@
       const { error } = await db.auth.signInWithPassword({ email, password });
 
       if (error) {
-        errorEl.textContent = 'Incorrect email or password.';
+        errorEl.textContent = error.message;
         errorEl.classList.add('visible');
         btnText.textContent = 'Sign In';
         spinner.classList.remove('visible');
@@ -172,6 +178,48 @@
         document.getElementById('password').focus();
       } else {
         window.location.href = 'habit_tracker_mockup.html';
+      }
+    }
+
+    async function handleSignup() {
+      const email    = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const errorEl  = document.getElementById('errorMessage');
+      const btn      = document.getElementById('signupButton');
+      const btnText  = document.getElementById('signupText');
+      const spinner  = document.getElementById('signupSpinner');
+
+      if (!email || !password) {
+        errorEl.textContent = 'Please enter your email and password first.';
+        errorEl.classList.add('visible');
+        return;
+      }
+
+      errorEl.classList.remove('visible');
+      btnText.textContent = '';
+      spinner.classList.add('visible');
+      btn.disabled = true;
+
+      const { error } = await db.auth.signUp({ email, password });
+
+      if (error) {
+        errorEl.textContent = error.message;
+        errorEl.classList.add('visible');
+        btnText.textContent = 'Create Account';
+        spinner.classList.remove('visible');
+        btn.disabled = false;
+      } else {
+        // Account created — now sign in
+        const { error: loginError } = await db.auth.signInWithPassword({ email, password });
+        if (loginError) {
+          errorEl.textContent = 'Account created! Try signing in now.';
+          errorEl.classList.add('visible');
+          btnText.textContent = 'Create Account';
+          spinner.classList.remove('visible');
+          btn.disabled = false;
+        } else {
+          window.location.href = 'habit_tracker_mockup.html';
+        }
       }
     }
   </script>
