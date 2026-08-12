@@ -453,6 +453,8 @@
 
         // — Touch drag (mobile) —
         item.addEventListener('touchstart', (e) => {
+          // Let taps on action buttons (edit / archive / delete) pass through normally
+          if (e.target.closest('.habit-actions')) return;
           e.preventDefault(); // blocks text selection and context menu
           const touch = e.touches[0];
           draggedId = item.dataset.id;
