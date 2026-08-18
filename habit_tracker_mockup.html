@@ -744,7 +744,7 @@
       const editing   = editingId ? (state.appointmentsByDate[key] || []).find(a => a.id === editingId) : null;
       if (!editing) return '';
 
-      const activeHabits = state.habits.filter(h => !h.archived);
+      const activeHabits = state.habits.filter(h => !h.archived && h.frequency !== 'daily');
       const habitOptions = activeHabits.map(h =>
         `<option value="${h.id}" ${editing.habit_id === h.id ? 'selected' : ''}>${escapeHtml(h.name)}</option>`
       ).join('');
@@ -795,13 +795,13 @@
         ...morningAppts,
       ];
       const eveningHabits = [
+        ...eveningAppts,
         ...state.habits.filter(h =>
           h.frequency === 'daily' && h.section === 'evening' && h.id !== state.prayerHabitId
         ),
         ...state.habits.filter(h =>
           h.frequency === 'weekly' && h.days && h.days.includes(dow) && h.section === 'evening'
         ),
-        ...eveningAppts,
       ];
       const weeklyHabits = state.habits.filter(h =>
         h.frequency === 'weekly' && h.days && h.days.includes(dow) && !h.section
@@ -1080,7 +1080,7 @@
     function renderQuickAddModal() {
       if (!state.quickAddOpen) return '';
 
-      const activeHabits = state.habits.filter(h => !h.archived);
+      const activeHabits = state.habits.filter(h => !h.archived && h.frequency !== 'daily');
       const habitOptions = activeHabits.map(h => `<option value="${h.id}">${escapeHtml(h.name)}</option>`).join('');
       const inputStyle = 'width:100%;background:#0a0a0a;border:1px solid #2a2925;color:#f5f1ed;border-radius:4px;padding:9px 10px;font-size:12px;font-family:inherit;outline:none;';
       const todayStr = dateKey(state.selectedDate);
