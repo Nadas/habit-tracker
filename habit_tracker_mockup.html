@@ -59,9 +59,6 @@
       prayersByDate: {},
       dailyNotes: {},
       prayerHabitId: null,
-      weightHabitId: null,
-      weightData: {},
-      weightGoal: null,
       calendarOpen: false,
       calendarViewDate: null,
       allNotes: null,
@@ -69,6 +66,8 @@
       appointmentsByDate: {},
       appointmentFormOpen: false,
       editingAppointmentId: null,
+      allAppointments: null,
+      quickAddOpen: false,
     };
 
     const dayNames   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -246,25 +245,6 @@
       }
     }
 
-    async function loadWeightForMonth(year, month) {
-      if (!state.weightHabitId) return;
-      const startKey = `${year}-${String(month+1).padStart(2,'0')}-01`;
-      const endKey   = `${year}-${String(month+1).padStart(2,'0')}-31`;
-
-      const { data } = await db.from('completions')
-        .select('date, value')
-        .eq('habit_id', state.weightHabitId)
-        .gte('date', startKey)
-        .lte('date', endKey)
-        .order('date');
-
-      state.weightData = {};
-      (data || []).forEach(c => {
-        const val = parseFloat(c.value);
-        if (!isNaN(val)) state.weightData[c.date] = val;
-      });
-    }
-
     async function loadCompletionsForYear(year) {
       const startKey = `${year}-01-01`;
       const endKey   = `${year}-12-31`;
@@ -300,19 +280,33 @@
       state.allNotes = (data || []).filter(n => n.content && n.content.trim());
     }
 
+    async function loadAllAppointments() {
+      if (state.allAppointments !== null) return;
+
+      const { data } = await db.from('appointments')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .order('date', { ascending: true });
+
+      state.allAppointments = data || [];
+    }
+
     // ─── Mutations ────────────────────────────────────────────────────────────────
+
+    async function upsertCompletion(habitId, key, value) {
+      const valueStr = value === true ? 'true' : value === false ? 'false' : String(value ?? '');
+      await db.from('completions').upsert(
+        { user_id: currentUser.id, habit_id: habitId, date: key, value: valueStr },
+        { onConflict: 'habit_id,date' }
+      );
+    }
 
     async function setHabit(habitId, value) {
       const key = dateKey(state.selectedDate);
       if (!state.completionsByDate[key]) state.completionsByDate[key] = {};
       state.completionsByDate[key][habitId] = value;
       render();
-
-      const valueStr = value === true ? 'true' : value === false ? 'false' : String(value ?? '');
-      await db.from('completions').upsert(
-        { user_id: currentUser.id, habit_id: habitId, date: key, value: valueStr },
-        { onConflict: 'habit_id,date' }
-      );
+      await upsertCompletion(habitId, key, value);
     }
 
     async function togglePrayer(prayerId) {
@@ -394,6 +388,7 @@
       }
 
       state.appointmentsByDate[key] = undefined; // invalidate cache
+      state.allAppointments = null; // invalidate global list cache
       closeAppointmentForm();
       await loadAppointmentsForDate(state.selectedDate);
       render();
@@ -403,7 +398,65 @@
       const key = dateKey(state.selectedDate);
       await db.from('appointments').delete().eq('id', id);
       state.appointmentsByDate[key] = (state.appointmentsByDate[key] || []).filter(a => a.id !== id);
+      state.allAppointments = null; // invalidate global list cache
       render();
+    }
+
+    // ─── Quick-add (global) ──────────────────────────────────────────────────────
+
+    function toggleQuickAdd() {
+      state.quickAddOpen = !state.quickAddOpen;
+      render();
+    }
+
+    function closeQuickAdd() {
+      state.quickAddOpen = false;
+      render();
+    }
+
+    async function saveQuickAppointment(formEl) {
+      const title    = formEl.title.value.trim();
+      const dateStr  = formEl.date.value; // already YYYY-MM-DD from <input type="date">
+      const time     = formEl.time.value.trim();
+      const location = formEl.location.value.trim();
+      const notes    = formEl.notes.value.trim();
+      const habitId  = formEl.habit_id.value || null;
+      if (!title || !dateStr) return;
+
+      await db.from('appointments').insert({
+        user_id: currentUser.id, date: dateStr,
+        title, time: time || null, location: location || null, notes: notes || null,
+        habit_id: habitId,
+      });
+
+      if (habitId) {
+        await upsertCompletion(habitId, dateStr, true);
+        if (state.completionsByDate[dateStr]) state.completionsByDate[dateStr][habitId] = true;
+      }
+
+      // Invalidate any caches that might now be stale
+      state.appointmentsByDate[dateStr] = undefined;
+      state.allAppointments = null;
+
+      state.quickAddOpen = false;
+      render();
+
+      // If the quick-added appointment was for the day currently being
+      // viewed, refresh it so it shows up immediately.
+      if (dateStr === dateKey(state.selectedDate)) {
+        await loadAppointmentsForDate(state.selectedDate);
+        render();
+      }
+    }
+
+    function goToAppointmentDate(dateStr) {
+      const [y, m, d] = dateStr.split('-').map(Number);
+      state.selectedDate = new Date(y, m - 1, d);
+      state.activeTab = 'daily';
+      state.calendarOpen = false;
+      state.appointmentFormOpen = false;
+      state.editingAppointmentId = null;
+      loadTabData().then(render);
     }
 
     // ─── Navigation ───────────────────────────────────────────────────────────────
@@ -495,6 +548,8 @@
 
       if (tab === 'daily' || tab === 'prayer') {
         await Promise.all([loadCompletionsForDate(date), loadNoteForDate(date), loadAppointmentsForDate(date)]);
+      } else if (tab === 'appointments') {
+        await loadAllAppointments();
       } else if (tab === 'weekly') {
         const dow   = date.getDay();
         const start = new Date(date); start.setDate(date.getDate() - dow);
@@ -504,8 +559,6 @@
         const start = new Date(date.getFullYear(), date.getMonth(), 1);
         const end   = new Date(date.getFullYear(), date.getMonth() + 1, 0);
         await loadCompletionsForRange(start, end);
-      } else if (tab === 'stats') {
-        await loadWeightForMonth(date.getFullYear(), date.getMonth());
       } else if (tab === 'year') {
         await loadCompletionsForYear(date.getFullYear());
       } else if (tab === 'notes') {
@@ -959,129 +1012,6 @@
       return html;
     }
 
-    function renderStatsView() {
-      const year  = state.selectedDate.getFullYear();
-      const month = state.selectedDate.getMonth();
-      const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-      // Build monthData from the full month, using actual day numbers
-      const monthData = [];
-      for (let d = 1; d <= daysInMonth; d++) {
-        const k = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        if (state.weightData[k] !== undefined) {
-          monthData.push({ day: d, weight: state.weightData[k] });
-        }
-      }
-
-      if (monthData.length === 0) {
-        return `<div style="text-align:center;padding:40px 20px;color:#7a7570;font-size:12px;">No weight data logged yet for ${monthNames[month]} ${year}.</div>`;
-      }
-
-      const weights       = monthData.map(d => d.weight);
-      const startWeight   = weights[0];
-      const currentWeight = weights[weights.length - 1];
-      const weightLost    = startWeight - currentWeight;
-      const goalWeight    = state.weightGoal;
-
-      // Chart dimensions
-      const chartWidth  = 420, chartHeight = 200;
-      const pL = 40, pR = 20, pT = 20, pB = 40;
-      const iW = chartWidth - pL - pR;
-      const iH = chartHeight - pT - pB;
-
-      const minW  = Math.min(...weights);
-      const maxW  = Math.max(...weights);
-      const range = maxW - minW || 1;
-
-      // Map a day (1-daysInMonth) to an x coordinate
-      function dayToX(day) {
-        return pL + ((day - 1) / Math.max(daysInMonth - 1, 1)) * iW;
-      }
-
-      // Build polyline using actual day positions
-      let points = '';
-      monthData.forEach(e => {
-        const x = dayToX(e.day);
-        const y = pT + iH - ((e.weight - minW) / range) * iH;
-        points += `${x},${y} `;
-      });
-
-      let yLines = '', yLabels = '';
-      for (let i = 0; i <= 5; i++) {
-        const val = minW + (range / 5) * i;
-        const y   = pT + iH - (i / 5) * iH;
-        yLines  += `<line x1="${pL}" y1="${y}" x2="${chartWidth-pR}" y2="${y}" stroke="#2a2925" stroke-width="0.5" opacity="0.5"/>`;
-        yLabels += `<text x="${pL-6}" y="${y+3}" font-size="8" fill="#8a8985" text-anchor="end">${val.toFixed(1)}</text>`;
-      }
-
-      // X labels: every 5 days, plus day 1 and the last day of the month.
-      // The last day doesn't fall on a clean multiple of 5 (e.g. 31, 28,
-      // 29), so it can land right next to the nearest step label (30/31)
-      // and crowd together. Drop any step label that's too close to the
-      // final day instead of forcing both in regardless of collision.
-      let xLabels = '';
-      const MIN_LABEL_GAP_DAYS = 3;
-      const labelDays = new Set([1]);
-      for (let d = 5; d < daysInMonth; d += 5) labelDays.add(d);
-      [...labelDays].forEach(d => {
-        if (d !== 1 && daysInMonth - d < MIN_LABEL_GAP_DAYS) labelDays.delete(d);
-      });
-      labelDays.add(daysInMonth);
-      labelDays.forEach(d => {
-        const x = dayToX(d);
-        xLabels += `<text x="${x}" y="${pT+iH+16}" font-size="9" fill="#8a8985" text-anchor="middle">${d}</text>`;
-      });
-
-      const dots = monthData.map(e => {
-        const x = dayToX(e.day);
-        const y = pT + iH - ((e.weight - minW) / range) * iH;
-        return `<circle cx="${x}" cy="${y}" r="1.5" fill="#d97757" opacity="0.8"/>`;
-      }).join('');
-
-      // Summary cards
-      const summaryCards = `
-        <div style="display:flex;gap:12px;">
-          <div style="flex:1;background:#141411;border:1px solid #2a2925;border-radius:6px;padding:16px;">
-            <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:8px;">Weight Lost</p>
-            <p style="color:#f5f1ed;font-size:24px;font-weight:400;margin-bottom:4px;">${Math.abs(weightLost).toFixed(1)} kg</p>
-            <div style="color:#8a8985;font-size:11px;">
-              <div>Started: ${startWeight.toFixed(1)} kg</div>
-              <div style="color:#d97757;margin-top:4px;">↓ ${((Math.abs(weightLost)/startWeight)*100).toFixed(1)}%</div>
-            </div>
-          </div>
-          <div style="flex:1;background:#141411;border:1px solid #2a2925;border-radius:6px;padding:16px;">
-            <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:8px;">Current Weight</p>
-            <p style="color:#f5f1ed;font-size:24px;font-weight:400;margin-bottom:4px;">${currentWeight.toFixed(1)} kg</p>
-            <div style="color:#8a8985;font-size:11px;">
-              ${goalWeight
-                ? `<div>Goal: ${goalWeight.toFixed(1)} kg</div>
-                   <div style="margin-top:4px;">${Math.abs(currentWeight - goalWeight).toFixed(1)} kg to go</div>`
-                : `<div>No goal set</div>`
-              }
-            </div>
-          </div>
-        </div>`;
-
-      return `
-        <div style="display:flex;flex-direction:column;gap:16px;">
-          ${summaryCards}
-          <div style="background:#141411;border:1px solid #2a2925;border-radius:6px;padding:16px;">
-            <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:16px;">
-              Weight Trend — ${monthNames[month]} ${year}
-            </p>
-            <svg viewBox="0 0 ${chartWidth} ${chartHeight}" style="width:100%;height:200px;">
-              ${yLines}
-              <line x1="${pL}" y1="${pT}" x2="${pL}" y2="${pT+iH}" stroke="#8a8985" stroke-width="1"/>
-              <line x1="${pL}" y1="${pT+iH}" x2="${chartWidth-pR}" y2="${pT+iH}" stroke="#8a8985" stroke-width="1"/>
-              ${yLabels}
-              ${xLabels}
-              <polyline points="${points}" fill="none" stroke="#d97757" stroke-width="2" opacity="0.9"/>
-              ${dots}
-            </svg>
-          </div>
-        </div>`;
-    }
-
     function renderNotesView() {
       if (!state.allNotes || state.allNotes.length === 0) {
         return `<div style="text-align:center;padding:40px 20px;color:#7a7570;font-size:12px;">No notes recorded yet.</div>`;
@@ -1100,6 +1030,74 @@
       return `<div>${entries}</div>`;
     }
 
+    function renderAppointmentsTabView() {
+      if (!state.allAppointments || state.allAppointments.length === 0) {
+        return `<div style="text-align:center;padding:40px 20px;color:#7a7570;font-size:12px;">No appointments yet.</div>`;
+      }
+
+      const todayKey = dateKey(new Date());
+      const upcoming = state.allAppointments.filter(a => a.date >= todayKey);
+      const past     = state.allAppointments.filter(a => a.date < todayKey).slice().reverse();
+
+      function entry(a) {
+        const d = new Date(a.date + 'T00:00:00');
+        const label = `${dayNames[d.getDay()]}, ${monthNames[d.getMonth()]} ${d.getDate()}`;
+        const meta = [a.time ? formatApptTime(a.time) : null, a.location || null].filter(Boolean).join(' · ');
+        return `
+          <button onclick="goToAppointmentDate('${a.date}')"
+            style="display:block;width:100%;text-align:left;background:#141411;border:1px solid #2a2925;border-radius:4px;padding:12px 14px;margin-bottom:8px;cursor:pointer;font-family:inherit;">
+            <p style="color:#8a8985;font-size:9px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:6px;">${label}</p>
+            <p style="color:#f5f1ed;font-size:12px;">${escapeHtml(a.title)}</p>
+            ${meta ? `<p style="color:#7a7570;font-size:10px;margin-top:2px;">${escapeHtml(meta)}</p>` : ''}
+          </button>`;
+      }
+
+      const upcomingHtml = upcoming.length
+        ? `<p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:8px;">Upcoming</p>${upcoming.map(entry).join('')}`
+        : '';
+      const pastHtml = past.length
+        ? `<p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin:${upcoming.length?'16px':'0'} 0 8px;">Past</p>${past.map(entry).join('')}`
+        : '';
+
+      return `<div>${upcomingHtml}${pastHtml}</div>`;
+    }
+
+    function renderQuickAddModal() {
+      if (!state.quickAddOpen) return '';
+
+      const activeHabits = state.habits.filter(h => !h.archived);
+      const habitOptions = activeHabits.map(h => `<option value="${h.id}">${escapeHtml(h.name)}</option>`).join('');
+      const inputStyle = 'width:100%;background:#0a0a0a;border:1px solid #2a2925;color:#f5f1ed;border-radius:4px;padding:9px 10px;font-size:12px;font-family:inherit;outline:none;';
+      const todayStr = dateKey(state.selectedDate);
+
+      return `
+        <div onclick="closeQuickAdd()"
+          style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,0.6);display:flex;align-items:flex-end;justify-content:center;">
+          <div onclick="event.stopPropagation()"
+            style="background:#141411;border:1px solid #2a2925;border-top-left-radius:10px;border-top-right-radius:10px;padding:16px;width:100%;max-width:480px;">
+            <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:12px;">New Appointment</p>
+            <form onsubmit="event.preventDefault();saveQuickAppointment(this);" style="display:flex;flex-direction:column;gap:8px;">
+              <input name="title" placeholder="Title" required style="${inputStyle}">
+              <div style="display:flex;gap:8px;">
+                <input name="date" type="date" required value="${todayStr}" style="${inputStyle};flex:1;">
+                <input name="time" type="time" style="${inputStyle};flex:1;">
+              </div>
+              <input name="location" placeholder="Location" style="${inputStyle}">
+              <textarea name="notes" placeholder="Notes (optional)" style="${inputStyle};resize:none;min-height:48px;"></textarea>
+              <select name="habit_id" style="${inputStyle};">
+                <option value="">No linked habit</option>
+                ${habitOptions}
+              </select>
+              <p style="color:#7a7570;font-size:9px;">Linking a habit marks it complete for that day.</p>
+              <div style="display:flex;gap:8px;margin-top:4px;">
+                <button type="submit" style="flex:1;background:#d97757;border:none;color:#0a0a0a;border-radius:4px;padding:10px;font-size:12px;font-weight:600;cursor:pointer;">Save</button>
+                <button type="button" onclick="closeQuickAdd()" style="flex:1;background:none;border:1px solid #2a2925;color:#8a8985;border-radius:4px;padding:10px;font-size:12px;cursor:pointer;">Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>`;
+    }
+
     // ─── Main render ──────────────────────────────────────────────────────────────
 
     function render() {
@@ -1107,11 +1105,11 @@
       if (state.activeTab === 'prayer' && !state.prayerHabitId) state.activeTab = 'daily';
 
       // Tab groups with | dividers
-      const tabLabels = { daily:'Today', prayer:'Prayers', weekly:'Week', monthly:'Month', year:'Year', stats:'Stats', notes:'Notes' };
+      const tabLabels = { daily:'Today', prayer:'Prayers', weekly:'Week', monthly:'Month', year:'Year', notes:'Notes', appointments:'Appts' };
       const groups = [
         ['daily', 'prayer'].filter(t => t !== 'prayer' || !!state.prayerHabitId),
         ['weekly', 'monthly', 'year'],
-        ['stats', 'notes'],
+        ['notes', 'appointments'],
       ];
 
       function renderTabGroup(tabs) {
@@ -1133,7 +1131,7 @@
       let dateNavHtml = '';
       const tab = state.activeTab;
 
-      if (tab === 'stats' || tab === 'monthly') {
+      if (tab === 'monthly') {
         const label = `${monthNames[state.selectedDate.getMonth()]} ${state.selectedDate.getFullYear()}`;
         dateNavHtml = `
           <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #2a2925;">
@@ -1159,8 +1157,8 @@
             <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;">${state.selectedDate.getFullYear()}</p>
             <button onclick="changeYear(1)"  style="background:none;border:none;color:#8a8985;cursor:pointer;font-size:18px;padding:4px 8px;">›</button>
           </div>`;
-      } else if (tab === 'notes') {
-        dateNavHtml = ''; // no date nav for notes
+      } else if (tab === 'notes' || tab === 'appointments') {
+        dateNavHtml = ''; // no date nav for notes / appointments list
       } else {
         // daily / prayer — tappable date label opens mini-calendar
         const isToday = new Date().toDateString() === state.selectedDate.toDateString();
@@ -1187,11 +1185,12 @@
       else if (tab === 'weekly')  content = renderWeeklyView();
       else if (tab === 'monthly') content = renderMonthlyView();
       else if (tab === 'year')    content = renderYearView();
-      else if (tab === 'stats')   content = renderStatsView();
       else if (tab === 'notes')   content = renderNotesView();
+      else if (tab === 'appointments') content = renderAppointmentsTabView();
 
       document.getElementById('root').innerHTML = `
         ${renderCalendarOverlay()}
+        ${renderQuickAddModal()}
         <div class="container">
           <div style="position:sticky;top:0;background:#0a0a0a;border-bottom:1px solid #2a2925;z-index:10;">
             <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #2a2925;">
@@ -1216,6 +1215,8 @@
           <div style="padding:12px 14px;max-width:480px;margin:0 auto;">
             ${content}
           </div>
+          <button onclick="toggleQuickAdd()" title="Add appointment"
+            style="position:fixed;bottom:20px;right:20px;width:44px;height:44px;border-radius:50%;background:#d97757;border:none;color:#0a0a0a;font-size:22px;font-weight:400;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;line-height:1;z-index:40;">+</button>
         </div>`;
     }
 
@@ -1228,10 +1229,6 @@
         return;
       }
       currentUser = session.user;
-
-      // Load weight goal from user metadata
-      const rawGoal = currentUser.user_metadata?.weight_goal;
-      state.weightGoal = rawGoal ? parseFloat(rawGoal) : null;
 
       const { data: habits } = await db.from('habits')
         .select('*')
@@ -1256,9 +1253,6 @@
       });
 
       state.prayerHabitId = state.habits.find(h => h.name === 'Prayers')?.id || null;
-      state.weightHabitId = state.habits.find(h =>
-        h.type === 'number' && (h.unit === 'kg' || h.name.toLowerCase().includes('weight'))
-      )?.id || null;
 
       await loadTabData();
       render();

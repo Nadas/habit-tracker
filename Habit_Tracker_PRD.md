@@ -206,6 +206,20 @@ This is a personal accountability tool, not a gamified productivity app. The cor
 | date | date | The day this note is for |
 | content | text | Free-text daily note |
 
+**`appointments`**
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | Primary key |
+| user_id | uuid | References auth.users |
+| date | date | The day this appointment is for |
+| title | text | Appointment title |
+| time | text | Free-text or time value, e.g. `14:30` |
+| location | text | Optional |
+| notes | text | Optional free-text notes |
+| habit_id | uuid | Optional — references `habits`. When set, saving the appointment also upserts a completion for that habit on the appointment's `date`, marking it done. This is the off-schedule logging path (see §14). |
+
+Intentionally a separate table from `habits` — appointments are one-off, non-recurring events, not tracked habits.
+
 Row-level security enabled on all tables.
 
 ### Prayer JSON format
@@ -228,7 +242,7 @@ The user can directly in the app: add, edit, delete permanently, archive/pause, 
 Monthly habits recur on the Nth weekday of each month (e.g. "2nd Thursday"). Stored as `[nth, weekday]` in the `days` column. `nth = 5` means "Last" occurrence of that weekday in the month.
 
 ### Editable History
-Past entries can be backfilled — checking off yesterday's habit if forgotten.
+Past entries can be backfilled — checking off yesterday's habit if forgotten. Navigate to the due date and log it there.
 
 ### Future Days
 All habits default to "no" / unchecked after today. Wake-up time defaults to `00:00`.
@@ -275,16 +289,29 @@ All habits default to "no" / unchecked after today. Wake-up time defaults to `00
 
 ---
 
+## 8a. Appointments Tracker
+
+- One-off appointments only — not recurring, not part of the habit model
+- Lives inside the **Daily view** as its own section, showing that day's appointments inline
+- **Global quick-add** — a coral "+" floating button, bottom-right, visible on every tab. Opens a bottom-sheet form with a date field (defaults to the currently viewed day) so an appointment can be added for any date without navigating there first
+- **Appointments tab** — a dedicated tab (grouped with Stats/Notes) listing all appointments split into Upcoming and Past; tapping an entry navigates to that date in the Daily view (same tap-to-navigate pattern as Notes)
+- Fields: **title**, **time**, **location**, **notes** (title required; time, location, notes optional)
+- **Optional habit link** — appointment can be linked to an existing habit via a dropdown. When linked, saving the appointment also marks that habit complete for the appointment's date — this is the mechanism for logging a habit done off-schedule (see §14, resolved)
+- Rendered read-only for past dates in the Daily view — appointments on days before today can be viewed but not added/edited/deleted there (the quick-add FAB can still create a past-dated entry deliberately, e.g. backfilling)
+- Stored in a dedicated `appointments` table, separate from `habits`/`completions`
+
+---
+
 ## 9. Views
 
 ### Tab Bar Layout
 Eight tabs arranged in three groups, separated by `|` pipe dividers:
 
 ```
-Today · Prayer | Week · Month · Year | Stats · Notes
+Today · Prayer | Week · Month · Year | Notes · Appts
 ```
 
-Prayer tab is hidden unless a "Prayers" habit exists (group collapses to just "Week · Month · Year" if so).
+Prayer tab is hidden unless a "Prayers" habit exists (group collapses to just "Week · Month · Year" if so). Stats is no longer a tab — it's reached from Profile (see §10).
 
 ### Daily View
 - Date label is a tappable button — opens mini-calendar overlay for jumping to any day
@@ -295,6 +322,7 @@ Prayer tab is hidden unless a "Prayers" habit exists (group collapses to just "W
 - Prayer section: read-only status indicator (Complete / Incomplete / Menstruating)
 - Monthly habits due today shown in a "Monthly" section
 - Weekly habits at bottom on their designated day(s)
+- **Appointments section** — one-off appointments for that date (see §8a), shown within the Daily view rather than as a separate tab
 - Notes textarea at bottom — per-date free text
 
 ### Mini-Calendar Overlay
@@ -326,15 +354,32 @@ Prayer tab is hidden unless a "Prayers" habit exists (group collapses to just "W
 - Dot = completed that month; empty = not completed
 - Year navigation (< >) at top
 
-### Stats View
+### Stats Page (reached from Profile, not a tab)
+- Own screen at `habit_tracker_stats.html`, reached via a "Stats" link on the Profile page; uses the back-arrow subpage header (matching Edit Profile), not the main tab bar
+- **Discipline Score** — top of the page. A single quiet number: percentage of scheduled habit-instances completed this month (completed ÷ due, across all active habits regardless of frequency, for the selected month). Plain off-white text, no color coding, no icons, no "X of Y" framing — just the percentage. Month navigation applies to it same as the rest of the page.
 - Monthly weight trend line chart; month navigation
+- **Monthly wake-up time trend line chart** — same layout/pattern as the weight chart (month navigation, x-axis by day of month), plotting wake-up time entries for the selected month
 - X-axis spans all days of the month (day 1 → last day); single entries plotted at correct position
 - Weight goal target line shown only when a goal is set in Edit Profile
 
 ### Notes View
 - All recorded daily notes in reverse chronological order
+- **Month navigator** at top, matching the existing `‹ Month Year ›` pattern used elsewhere — filters notes to the selected month
+- **Keyword search box** — filters notes by content match; combinable with the month navigator (both filters apply together)
 - Date label + note content per entry
-- Scrollable, read-only (edit notes from the Daily view)
+- Tapping a note navigates to that note's date in the Daily view, where the note can be edited in the textarea
+- Scrollable; notes themselves are still edited only from the Daily view (Notes tab has no inline editing)
+
+### Appointments Tab
+- All appointments split into **Upcoming** and **Past** sections (chronological within each)
+- Date label + title + time/location per entry
+- Tapping an entry navigates to that date in the Daily view (same tap-to-navigate pattern as Notes)
+- Read-only list; appointments are created/edited from the Daily view or the global quick-add, not inline here
+
+### Global Quick-Add
+- A coral "+" floating button, fixed bottom-right, visible on every tab
+- Opens a bottom-sheet form: title, **date** (defaults to the currently viewed day), time, location, notes, optional habit link
+- Lets an appointment be added for any date without first navigating to that day — the centralized counterpart to the per-day Appointments section in the Daily view
 
 ---
 
@@ -349,17 +394,18 @@ Prayer tab is hidden unless a "Prayers" habit exists (group collapses to just "W
 | Habit Form (add/edit) | `habit_tracker_habit_form.html` |
 | Profile | `habit_tracker_profile.html` |
 | Edit Profile | `habit_tracker_edit_profile.html` |
+| Stats | `habit_tracker_stats.html` |
 
-**All pages share the same app header:** profile SVG icon (left) | Discipline (center, taps to today) | settings SVG icon (right). Manage Habits and Habit Form show a secondary subheader row below it for their page-specific title/actions.
+**All pages share the same app header:** profile SVG icon (left) | Discipline (center, taps to today) | settings SVG icon (right). Manage Habits and Habit Form show a secondary subheader row below it for their page-specific title/actions. Profile, Edit Profile, and Stats use a simpler back-arrow + title header instead, since they're reached as sub-pages rather than top-level tabs.
 
-**Flow:** Login → Main Tracker → Profile (person icon) or Manage Habits (sliders icon) → Habit Form
+**Flow:** Login → Main Tracker → Profile (person icon) or Manage Habits (sliders icon) → Habit Form. Stats is reached from Profile.
 
 ---
 
 ## 11. Explicitly Out of Scope
 
 - Multi-user support, roles, sharing
-- Streak counts, completion stats, gamification
+- Streak counts, gamification (badges, celebratory animations, leaderboards, etc.) — the Discipline Score (Stats Page, §9) is a deliberate exception: a single unstyled percentage, no color/judgment, not a streak or a game mechanic
 - Per-habit reminders (global toggle only)
 - Desktop-optimized layout
 
@@ -371,7 +417,32 @@ Prayer tab is hidden unless a "Prayers" habit exists (group collapses to just "W
 
 ---
 
-## 13. Resolved Decisions
+## 13. Known Bugs (Unresolved)
+
+### Calendar overlay highlights wrong day
+Tapping the date label opens the mini-calendar overlay, but the highlighted/selected day shown in the grid is one day behind the actual selected date. Likely an off-by-one from a UTC/local timezone conversion (e.g. `toISOString()` shifting the date back before comparison). Needs a fix pass on the date-matching logic in the calendar overlay component.
+
+### "Last" (5th) weekday-of-month habits don't appear
+Monthly habits using `nth = 5` ("Last") in the `[nth, weekday]` encoding — e.g. "last Thursday of the month" — don't show up on the correct day. Reported case: a habit set to last Thursday isn't appearing in the Daily view on that date. The Nth-weekday matching logic likely only handles `nth` 1–4 (literal Nth occurrence) and doesn't special-case `nth = 5` as "find the last occurrence of this weekday in the month," which requires checking from the end of the month backward rather than counting forward.
+
+### Weekly/Monthly grid column order doesn't match Daily view order
+Habit columns in the Weekly and Monthly matrix views aren't sorted the same way as the habit list in the Daily view (which reflects the user's drag-and-drop `sort_order`). Grid columns should follow the same `sort_order`-based ordering as Daily, grouped/sequenced consistently, instead of whatever order they're currently falling into (likely raw DB fetch order or a hardcoded/derived list rather than sorted by `sort_order`).
+
+### Archive icon turns blue on archived habits
+On Manage Habits, the archive/unarchive (↻) button changes to a blue highlighted state for habits that are already archived. Blue isn't part of the app's color palette (§2) — likely an unintentional default/active browser or component style leaking through rather than an app-defined color. Should use a palette-consistent treatment (e.g. coral `#d97757` or a muted state) instead of blue, or simply not highlight at all if archived status is already conveyed by the habit being in the Archived section.
+
+### Stats weight chart x-axis labels crowd together at month end
+On the Stats view weight trend chart, x-axis day labels are spaced with even gaps (1, 5, 10, 15, 20, 25...) but the final label always shows the actual last day of the month (30 or 31) squeezed in right next to the last evenly-spaced tick, rather than replacing it or being spaced proportionally. Needs the tick generation logic to either drop the nearest evenly-spaced label when it collides with the final day, or lay out ticks by actual proportional day position instead of a fixed step + forced last-day label.
+
+---
+
+## 14. Open Questions
+
+_(No open items currently — off-schedule habit logging was resolved via appointment-habit linking, see §8a and §15.)_
+
+---
+
+## 15. Resolved Decisions
 
 - Supabase backend (no custom server, free tier sufficient)
 - GitHub Pages hosting with `index.html` redirect
@@ -387,4 +458,11 @@ Prayer tab is hidden unless a "Prayers" habit exists (group collapses to just "W
 - Weight goal stored in `user_metadata.weight_goal`; null means "no goal set" → Stats hides goal line
 - Monthly habits encoded as `[nth, weekday]` in `days` column (no schema change needed)
 - Year view only shows monthly + quarterly habits (daily/weekly excluded — too granular for a yearly grid)
-- Notes tab is read-only; notes are still edited from the Daily view textarea
+- Notes tab entries are tappable — tapping navigates to that date in Daily view; notes are still edited only from the Daily view textarea, not inline in Notes tab
+- Notes tab gets a month navigator (matching the `‹ Month Year ›` pattern) plus a keyword search box; both filters combine
+- Appointments are one-off only (no recurrence), use their own `appointments` table separate from `habits`, and can be added from either the Daily view's Appointments section or a global quick-add FAB; a dedicated Appointments tab lists everything for browsing
+- Past-dated appointments render read-only (no add/edit on historical days)
+- **Off-schedule habit logging resolved via appointment-habit linking**: an appointment can optionally link to an existing habit; saving it also marks that habit complete on the appointment's date. This replaces the need for a separate "log anyway" mechanism — logging a missed/off-schedule habit is done by creating an appointment for it on the day it actually happened
+- Stats view gets a second chart for wake-up time, mirroring the weight chart's layout and month navigation
+- Discipline Score added to top of Stats page, replacing the weight card's position: a single quiet monthly completion percentage, no color coding or "X of Y" framing, kept deliberately out of the Daily view to avoid pressuring day-to-day use
+- Stats moved out of the main tab bar (now 8 tabs) onto its own page (`habit_tracker_stats.html`), reached via a "Stats" link on Profile; uses the back-arrow subpage header like Edit Profile. This also resolves the earlier open question about consolidating the in-app Stats tab with the older standalone stats page — the new page supersedes both

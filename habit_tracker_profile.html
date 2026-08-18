@@ -5,11 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Habit Tracker - Profile</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    * {
+      margin: 0; padding: 0; box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
       background: #0a0a0a; color: #f5f1ed; touch-action: manipulation;
     }
+    button { outline: none; }
+    button:focus-visible { outline: 1px solid #d97757; outline-offset: 1px; }
     .container { min-height: 100vh; background: #0a0a0a; }
     .header {
       position: sticky; top: 0; background: #0a0a0a;
@@ -131,6 +136,15 @@
           </div>
         </div>
 
+        <div class="section-title" style="margin-top:0;">Insights</div>
+        <div class="settings-card" onclick="goToStats()">
+          <div>
+            <div class="setting-label">Stats</div>
+            <div class="setting-description">Weight trend and progress</div>
+          </div>
+          <span style="color:#8a8985;font-size:14px;">›</span>
+        </div>
+
         <div class="section-title">Preferences</div>
         <div class="settings-card" style="cursor:default;">
           <div>
@@ -164,6 +178,7 @@
 
     function goBack()         { window.location.href = 'habit_tracker_mockup.html'; }
     function goToEditProfile(){ window.location.href = 'habit_tracker_edit_profile.html'; }
+    function goToStats()      { window.location.href = 'habit_tracker_stats.html'; }
 
     initApp();
   </script>

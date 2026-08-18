@@ -2,311 +2,247 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Habit Tracker - Stats</title>
   <style>
     * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
+      margin: 0; padding: 0; box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
     }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-      background: #0a0a0a;
-      color: #f5f1ed;
+      background: #0a0a0a; color: #f5f1ed; touch-action: manipulation;
     }
-    .container {
-      min-height: 100vh;
-      background: #0a0a0a;
+    button { outline: none; }
+    button:focus-visible { outline: 1px solid #d97757; outline-offset: 1px; }
+    .container { min-height: 100vh; background: #0a0a0a; }
+    .header {
+      position: sticky; top: 0; background: #0a0a0a;
+      border-bottom: 1px solid #2a2925; padding: 12px 14px;
+      z-index: 10; display: flex; align-items: center; gap: 10px;
     }
-    .stats-container {
-      padding: 12px 14px;
-      max-width: 480px;
-      margin: 0 auto;
-    }
-    .stat-card {
-      background: #141411;
-      border: 1px solid #2a2925;
-      border-radius: 6px;
-      padding: 16px;
-      margin-bottom: 16px;
-    }
-    .stat-label {
-      color: #8a8985;
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-      margin-bottom: 8px;
-    }
-    .stat-value {
-      color: #f5f1ed;
-      font-size: 24px;
-      font-weight: 400;
-      margin-bottom: 4px;
-    }
-    .stat-meta {
-      color: #8a8985;
-      font-size: 11px;
-      display: flex;
-      gap: 12px;
-    }
-    .trend {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-    .trend.up {
-      color: #d97757;
-    }
-    .trend.down {
-      color: #7a9d7d;
-    }
-    .trend-icon {
-      font-size: 12px;
-    }
-    .chart-container {
-      background: #141411;
-      border: 1px solid #2a2925;
-      border-radius: 6px;
-      padding: 16px;
-      margin-bottom: 16px;
-    }
-    .chart-title {
-      color: #8a8985;
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-      margin-bottom: 16px;
-    }
-    .chart {
-      display: flex;
-      align-items: flex-end;
-      justify-content: space-around;
-      height: 180px;
-      gap: 6px;
-    }
-    .bar-wrapper {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 6px;
-      flex: 1;
-    }
-    .bar {
-      width: 100%;
-      background: #d97757;
-      border-radius: 3px 3px 0 0;
-      opacity: 0.8;
-      transition: opacity 0.2s;
-      position: relative;
-      min-height: 4px;
-    }
-    .bar:hover {
-      opacity: 1;
-    }
-    .bar-label {
-      font-size: 9px;
-      color: #7a7570;
-      text-align: center;
-      white-space: nowrap;
-    }
-    .bar-value {
-      font-size: 8px;
-      color: #8a8985;
-      position: absolute;
-      top: -16px;
-      left: 50%;
-      transform: translateX(-50%);
-      white-space: nowrap;
-    }
-    .weight-entry {
-      background: #0a0a0a;
-      border: 1px solid #2a2925;
-      border-radius: 4px;
-      padding: 10px 12px;
-      margin-bottom: 8px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .weight-date {
-      font-size: 11px;
-      color: #8a8985;
-    }
-    .weight-value {
-      font-size: 12px;
-      color: #f5f1ed;
-      font-weight: 500;
-    }
-    .goal-section {
-      background: #141411;
-      border: 1px solid #2a2925;
-      border-radius: 6px;
-      padding: 16px;
-      margin-bottom: 16px;
-    }
-    .goal-label {
-      color: #8a8985;
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-      margin-bottom: 12px;
-    }
-    .progress-bar {
-      background: #0a0a0a;
-      border-radius: 4px;
-      height: 8px;
-      overflow: hidden;
-      margin-bottom: 8px;
-    }
-    .progress-fill {
-      background: #d97757;
-      height: 100%;
-      border-radius: 4px;
-      transition: width 0.3s ease;
-    }
-    .progress-text {
-      display: flex;
-      justify-content: space-between;
-      font-size: 10px;
-      color: #8a8985;
-    }
-    .insight {
-      background: rgba(217, 119, 87, 0.1);
-      border: 1px solid rgba(217, 119, 87, 0.2);
-      border-radius: 4px;
-      padding: 12px;
-      margin-bottom: 16px;
-      font-size: 11px;
-      color: #d97757;
-    }
+    .header button { background: none; border: none; color: #8a8985; cursor: pointer; font-size: 18px; padding: 4px; }
+    .header h1 { font-size: 14px; font-weight: 400; flex: 1; margin: 0; }
+    .content { padding: 12px 14px; max-width: 480px; margin: 0 auto; }
+    .loading-state { text-align: center; padding: 40px; color: #7a7570; font-size: 12px; }
   </style>
 </head>
 <body>
-  <div id="root"></div>
+  <div class="container">
+    <div class="header">
+      <button onclick="goBack()">←</button>
+      <h1>Stats</h1>
+      <div style="width:28px;"></div>
+    </div>
 
+    <div id="dateNav"></div>
+    <div class="content" id="content">
+      <div class="loading-state">Loading…</div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
   <script>
-    // Mock weight data for the past 30 days
-    const weightData = [
-      { date: '1 Aug', weight: 68.5 },
-      { date: '2 Aug', weight: 68.3 },
-      { date: '3 Aug', weight: 68.1 },
-      { date: '4 Aug', weight: 68.2 },
-      { date: '5 Aug', weight: 67.9 },
-      { date: '6 Aug', weight: 67.8 },
-      { date: '7 Aug', weight: 67.6 },
-      { date: '8 Aug', weight: 67.5 },
-      { date: '9 Aug', weight: 67.4 },
-      { date: '10 Aug', weight: 67.3 },
-      { date: '11 Aug', weight: 67.2 },
-      { date: '12 Aug', weight: 65.2 },
-    ];
+    const { createClient } = supabase;
+    const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    const startWeight = 68.5;
-    const currentWeight = 65.2;
-    const goalWeight = 63.0;
-    const weightLost = startWeight - currentWeight;
-    const weightToGoal = currentWeight - goalWeight;
-    const totalGoal = startWeight - goalWeight;
-    const progressPercent = ((weightLost / totalGoal) * 100).toFixed(1);
+    let currentUser = null;
+    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
-    function renderStatsPage() {
-      const html = `
-        <div class="stats-container">
-          <!-- Weight Loss Summary -->
-          <div class="stat-card">
-            <div class="stat-label">Weight Loss Progress</div>
-            <div class="stat-value">${weightLost.toFixed(1)} kg</div>
-            <div class="stat-meta">
-              <div>Started: ${startWeight.toFixed(1)} kg</div>
-              <div class="trend up">
-                <span class="trend-icon">↓</span>
-                ${((weightLost / startWeight) * 100).toFixed(1)}%
-              </div>
-            </div>
-          </div>
+    let state = {
+      selectedDate: new Date(),
+      weightHabitId: null,
+      weightGoal: null,
+      weightData: {},
+    };
 
-          <!-- Current Weight -->
-          <div class="stat-card">
-            <div class="stat-label">Current Weight</div>
-            <div class="stat-value">${currentWeight.toFixed(1)} kg</div>
-            <div class="stat-meta">
-              <div>Goal: ${goalWeight.toFixed(1)} kg</div>
-              <div>${Math.abs(weightToGoal).toFixed(1)} kg to go</div>
-            </div>
-          </div>
+    function goBack() { window.location.href = 'habit_tracker_profile.html'; }
 
-          <!-- Goal Progress -->
-          <div class="goal-section">
-            <div class="goal-label">Goal Progress</div>
-            <div class="progress-bar">
-              <div class="progress-fill" style="width: ${progressPercent}%"></div>
-            </div>
-            <div class="progress-text">
-              <span>${progressPercent}% complete</span>
-              <span>${weightToGoal.toFixed(1)} kg remaining</span>
-            </div>
-          </div>
+    async function loadWeightForMonth(year, month) {
+      if (!state.weightHabitId) { state.weightData = {}; return; }
+      const startKey = `${year}-${String(month+1).padStart(2,'0')}-01`;
+      const endKey   = `${year}-${String(month+1).padStart(2,'0')}-31`;
 
-          <!-- Insight -->
-          <div class="insight">
-            💪 Great progress! You've lost ${weightLost.toFixed(1)} kg in the past ${weightData.length} days. Keep up the consistent habit tracking!
-          </div>
+      const { data } = await db.from('completions')
+        .select('date, value')
+        .eq('habit_id', state.weightHabitId)
+        .gte('date', startKey)
+        .lte('date', endKey)
+        .order('date');
 
-          <!-- Weight Chart (Last 12 entries) -->
-          <div class="chart-container">
-            <div class="chart-title">Weight Trend (Last 12 Days)</div>
-            <div class="chart">
-              ${getChartBars()}
-            </div>
-          </div>
-
-          <!-- Recent Entries -->
-          <div class="stat-card">
-            <div class="stat-label">Recent Entries</div>
-            <div style="margin-top: 12px;">
-              ${getRecentEntries()}
-            </div>
-          </div>
-        </div>
-      `;
-
-      document.getElementById('root').innerHTML = html;
+      state.weightData = {};
+      (data || []).forEach(c => {
+        const val = parseFloat(c.value);
+        if (!isNaN(val)) state.weightData[c.date] = val;
+      });
     }
 
-    function getChartBars() {
-      const minWeight = Math.min(...weightData.map(d => d.weight));
-      const maxWeight = Math.max(...weightData.map(d => d.weight));
-      const range = maxWeight - minWeight || 1;
+    async function changeMonth(months) {
+      const d = new Date(state.selectedDate);
+      d.setMonth(d.getMonth() + months);
+      state.selectedDate = d;
+      await loadWeightForMonth(d.getFullYear(), d.getMonth());
+      render();
+    }
 
-      return weightData.map((entry, idx) => {
-        const normalizedHeight = ((entry.weight - minWeight) / range) * 100;
-        return `
-          <div class="bar-wrapper">
-            <div class="bar" style="height: ${normalizedHeight}%;">
-              <div class="bar-value">${entry.weight.toFixed(1)}</div>
-            </div>
-            <div class="bar-label">${entry.date.split(' ')[0]}</div>
-          </div>
-        `;
+    function renderDateNav() {
+      const label = `${monthNames[state.selectedDate.getMonth()]} ${state.selectedDate.getFullYear()}`;
+      document.getElementById('dateNav').innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #2a2925;">
+          <button onclick="changeMonth(-1)" style="background:none;border:none;color:#8a8985;cursor:pointer;font-size:18px;padding:4px 8px;">‹</button>
+          <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;">${label}</p>
+          <button onclick="changeMonth(1)"  style="background:none;border:none;color:#8a8985;cursor:pointer;font-size:18px;padding:4px 8px;">›</button>
+        </div>`;
+    }
+
+    function renderStatsView() {
+      const year  = state.selectedDate.getFullYear();
+      const month = state.selectedDate.getMonth();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+      // Build monthData from the full month, using actual day numbers
+      const monthData = [];
+      for (let d = 1; d <= daysInMonth; d++) {
+        const k = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        if (state.weightData[k] !== undefined) {
+          monthData.push({ day: d, weight: state.weightData[k] });
+        }
+      }
+
+      if (monthData.length === 0) {
+        return `<div style="text-align:center;padding:40px 20px;color:#7a7570;font-size:12px;">No weight data logged yet for ${monthNames[month]} ${year}.</div>`;
+      }
+
+      const weights       = monthData.map(d => d.weight);
+      const startWeight   = weights[0];
+      const currentWeight = weights[weights.length - 1];
+      const weightLost    = startWeight - currentWeight;
+      const goalWeight    = state.weightGoal;
+
+      // Chart dimensions
+      const chartWidth  = 420, chartHeight = 200;
+      const pL = 40, pR = 20, pT = 20, pB = 40;
+      const iW = chartWidth - pL - pR;
+      const iH = chartHeight - pT - pB;
+
+      const minW  = Math.min(...weights);
+      const maxW  = Math.max(...weights);
+      const range = maxW - minW || 1;
+
+      // Map a day (1-daysInMonth) to an x coordinate
+      function dayToX(day) {
+        return pL + ((day - 1) / Math.max(daysInMonth - 1, 1)) * iW;
+      }
+
+      // Build polyline using actual day positions
+      let points = '';
+      monthData.forEach(e => {
+        const x = dayToX(e.day);
+        const y = pT + iH - ((e.weight - minW) / range) * iH;
+        points += `${x},${y} `;
+      });
+
+      let yLines = '', yLabels = '';
+      for (let i = 0; i <= 5; i++) {
+        const val = minW + (range / 5) * i;
+        const y   = pT + iH - (i / 5) * iH;
+        yLines  += `<line x1="${pL}" y1="${y}" x2="${chartWidth-pR}" y2="${y}" stroke="#2a2925" stroke-width="0.5" opacity="0.5"/>`;
+        yLabels += `<text x="${pL-6}" y="${y+3}" font-size="8" fill="#8a8985" text-anchor="end">${val.toFixed(1)}</text>`;
+      }
+
+      // X labels: every 5 days, plus day 1 and the last day of the month.
+      // Drop any step label too close to the final day to avoid crowding
+      // (e.g. 30 and 31 landing right next to each other).
+      let xLabels = '';
+      const MIN_LABEL_GAP_DAYS = 3;
+      const labelDays = new Set([1]);
+      for (let d = 5; d < daysInMonth; d += 5) labelDays.add(d);
+      [...labelDays].forEach(d => {
+        if (d !== 1 && daysInMonth - d < MIN_LABEL_GAP_DAYS) labelDays.delete(d);
+      });
+      labelDays.add(daysInMonth);
+      labelDays.forEach(d => {
+        const x = dayToX(d);
+        xLabels += `<text x="${x}" y="${pT+iH+16}" font-size="9" fill="#8a8985" text-anchor="middle">${d}</text>`;
+      });
+
+      const dots = monthData.map(e => {
+        const x = dayToX(e.day);
+        const y = pT + iH - ((e.weight - minW) / range) * iH;
+        return `<circle cx="${x}" cy="${y}" r="1.5" fill="#d97757" opacity="0.8"/>`;
       }).join('');
+
+      const summaryCards = `
+        <div style="display:flex;gap:12px;">
+          <div style="flex:1;background:#141411;border:1px solid #2a2925;border-radius:6px;padding:16px;">
+            <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:8px;">Weight Lost</p>
+            <p style="color:#f5f1ed;font-size:24px;font-weight:400;margin-bottom:4px;">${Math.abs(weightLost).toFixed(1)} kg</p>
+            <div style="color:#8a8985;font-size:11px;">
+              <div>Started: ${startWeight.toFixed(1)} kg</div>
+              <div style="color:#d97757;margin-top:4px;">↓ ${((Math.abs(weightLost)/startWeight)*100).toFixed(1)}%</div>
+            </div>
+          </div>
+          <div style="flex:1;background:#141411;border:1px solid #2a2925;border-radius:6px;padding:16px;">
+            <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:8px;">Current Weight</p>
+            <p style="color:#f5f1ed;font-size:24px;font-weight:400;margin-bottom:4px;">${currentWeight.toFixed(1)} kg</p>
+            <div style="color:#8a8985;font-size:11px;">
+              ${goalWeight
+                ? `<div>Goal: ${goalWeight.toFixed(1)} kg</div>
+                   <div style="margin-top:4px;">${Math.abs(currentWeight - goalWeight).toFixed(1)} kg to go</div>`
+                : `<div>No goal set</div>`
+              }
+            </div>
+          </div>
+        </div>`;
+
+      return `
+        <div style="display:flex;flex-direction:column;gap:16px;">
+          ${summaryCards}
+          <div style="background:#141411;border:1px solid #2a2925;border-radius:6px;padding:16px;">
+            <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:16px;">
+              Weight Trend — ${monthNames[month]} ${year}
+            </p>
+            <svg viewBox="0 0 ${chartWidth} ${chartHeight}" style="width:100%;height:200px;">
+              ${yLines}
+              <line x1="${pL}" y1="${pT}" x2="${pL}" y2="${pT+iH}" stroke="#8a8985" stroke-width="1"/>
+              <line x1="${pL}" y1="${pT+iH}" x2="${chartWidth-pR}" y2="${pT+iH}" stroke="#8a8985" stroke-width="1"/>
+              ${yLabels}
+              ${xLabels}
+              <polyline points="${points}" fill="none" stroke="#d97757" stroke-width="2" opacity="0.9"/>
+              ${dots}
+            </svg>
+          </div>
+        </div>`;
     }
 
-    function getRecentEntries() {
-      const recent = [...weightData].reverse().slice(0, 5);
-      return recent.map(entry => `
-        <div class="weight-entry">
-          <div class="weight-date">${entry.date}</div>
-          <div class="weight-value">${entry.weight.toFixed(1)} kg</div>
-        </div>
-      `).join('');
+    function render() {
+      renderDateNav();
+      document.getElementById('content').innerHTML = renderStatsView();
     }
 
-    // Initialize
-    renderStatsPage();
+    async function initApp() {
+      const { data: { session } } = await db.auth.getSession();
+      if (!session) { window.location.href = 'habit_tracker_login.html'; return; }
+      currentUser = session.user;
+
+      const rawGoal = currentUser.user_metadata?.weight_goal;
+      state.weightGoal = rawGoal ? parseFloat(rawGoal) : null;
+
+      const { data: habits } = await db.from('habits')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .eq('archived', false);
+
+      state.weightHabitId = (habits || []).find(h =>
+        h.type === 'number' && (h.unit === 'kg' || h.name.toLowerCase().includes('weight'))
+      )?.id || null;
+
+      await loadWeightForMonth(state.selectedDate.getFullYear(), state.selectedDate.getMonth());
+      render();
+    }
+
+    initApp();
   </script>
 </body>
 </html>
