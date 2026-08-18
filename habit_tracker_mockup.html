@@ -48,6 +48,15 @@
       return `${y}-${m}-${d}`;
     }
 
+    // Appointments don't need a separate Morning/Evening picker — the
+    // time field already implies it. Before noon -> morning, otherwise
+    // evening. No time given -> defaults to evening.
+    function deriveSection(timeStr) {
+      if (!timeStr) return 'evening';
+      const hour = parseInt(timeStr.split(':')[0], 10);
+      return (!isNaN(hour) && hour < 12) ? 'morning' : 'evening';
+    }
+
     const PRAYER_KEYS    = ['fajr','dhuhr','asr','maghrib','isha'];
     const PRAYER_DEFAULT = { fajr:false, dhuhr:false, asr:false, maghrib:false, isha:false, menstruating:false };
 
@@ -365,6 +374,7 @@
       const time     = formEl.time.value.trim();
       const location = formEl.location.value.trim();
       const notes    = formEl.notes.value.trim();
+      const section  = deriveSection(time);
       const habitId  = formEl.habit_id.value || null;
       if (!title) return;
 
@@ -372,7 +382,7 @@
       const payload = {
         user_id: currentUser.id, date: key,
         title, time: time || null, location: location || null, notes: notes || null,
-        habit_id: habitId,
+        section, habit_id: habitId,
       };
 
       if (editingId) {
@@ -394,12 +404,23 @@
       render();
     }
 
+    async function setAppointmentStatus(id, value) {
+      const key = dateKey(state.selectedDate);
+      const list = state.appointmentsByDate[key] || [];
+      const appt = list.find(a => a.id === id);
+      if (appt) appt.completed = value;
+      render();
+
+      await db.from('appointments').update({ completed: value }).eq('id', id);
+      state.allAppointments = null; // invalidate global list cache (status shown there too)
+    }
+
     async function deleteAppointment(id) {
       const key = dateKey(state.selectedDate);
       await db.from('appointments').delete().eq('id', id);
       state.appointmentsByDate[key] = (state.appointmentsByDate[key] || []).filter(a => a.id !== id);
       state.allAppointments = null; // invalidate global list cache
-      render();
+      closeAppointmentForm();
     }
 
     // ─── Quick-add (global) ──────────────────────────────────────────────────────
@@ -420,13 +441,14 @@
       const time     = formEl.time.value.trim();
       const location = formEl.location.value.trim();
       const notes    = formEl.notes.value.trim();
+      const section  = deriveSection(time);
       const habitId  = formEl.habit_id.value || null;
       if (!title || !dateStr) return;
 
       await db.from('appointments').insert({
         user_id: currentUser.id, date: dateStr,
         title, time: time || null, location: location || null, notes: notes || null,
-        habit_id: habitId,
+        section, habit_id: habitId,
       });
 
       if (habitId) {
@@ -595,13 +617,13 @@
         </div>`;
     }
 
-    function renderSection(title, habits) {
-      if (!habits.length) return '';
+    function renderSection(title, items) {
+      if (!items.length) return '';
       return `
         <div>
           <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;margin-bottom:6px;text-transform:uppercase;">${title}</p>
           <div style="display:flex;flex-direction:column;gap:6px;">
-            ${habits.map(h => renderHabitItem(h)).join('')}
+            ${items.map(item => item.__appointment ? renderAppointmentItem(item) : renderHabitItem(item)).join('')}
           </div>
         </div>`;
     }
@@ -691,84 +713,64 @@
       return `${h12}:${String(m||0).padStart(2,'0')} ${period}`;
     }
 
-    function renderAppointments(date) {
-      const key   = dateKey(date);
-      const past  = isPastDate(date);
-      const appts = state.appointmentsByDate[key] || [];
-      const activeHabits = state.habits.filter(h => !h.archived);
-
-      const rows = appts.map(a => {
-        const habit = a.habit_id ? activeHabits.find(h => h.id === a.habit_id) : null;
-        const meta = [a.time ? formatApptTime(a.time) : null, a.location || null].filter(Boolean).join(' · ');
-        const actions = past ? '' : `
-          <div style="display:flex;gap:6px;">
-            <button onclick="openAppointmentForm('${a.id}')" style="background:none;border:none;color:#7a7570;cursor:pointer;font-size:11px;padding:2px 4px;">✎</button>
-            <button onclick="deleteAppointment('${a.id}')" style="background:none;border:none;color:#7a7570;cursor:pointer;font-size:11px;padding:2px 4px;">✕</button>
-          </div>`;
-        return `
-          <div style="display:flex;align-items:flex-start;gap:8px;padding:8px 10px;background:#141411;border-radius:4px;border:1px solid #2a2925;">
-            <div style="flex:1;min-width:0;">
-              <p style="color:#f5f1ed;font-size:12px;font-weight:400;">${escapeHtml(a.title)}</p>
-              ${meta ? `<p style="color:#8a8985;font-size:10px;margin-top:2px;">${escapeHtml(meta)}</p>` : ''}
-              ${a.notes ? `<p style="color:#7a7570;font-size:10px;margin-top:2px;">${escapeHtml(a.notes)}</p>` : ''}
-              ${habit ? `<p style="color:#d97757;font-size:9px;margin-top:4px;">↳ ${escapeHtml(habit.name)}</p>` : ''}
-            </div>
-            ${actions}
-          </div>`;
-      }).join('');
-
-      const emptyState = appts.length === 0 && !state.appointmentFormOpen
-        ? `<p style="color:#7a7570;font-size:11px;">${past ? 'No appointments logged.' : 'No appointments yet.'}</p>`
-        : '';
-
-      const addButton = (!past && !state.appointmentFormOpen)
-        ? `<button onclick="openAppointmentForm()" style="background:#141411;border:1px solid #2a2925;color:#8a8985;border-radius:4px;padding:7px 10px;font-size:11px;cursor:pointer;text-align:left;">+ Add appointment</button>`
-        : '';
-
-      const form = (!past && state.appointmentFormOpen) ? renderAppointmentForm(key) : '';
+    function renderAppointmentItem(appt) {
+      const value = !!appt.completed;
+      const meta  = [appt.time ? formatApptTime(appt.time) : null, appt.location || null].filter(Boolean).join(' · ');
+      const past  = isPastDate(new Date(appt.date + 'T00:00:00'));
+      const labelAttrs = past ? '' : `onclick="openAppointmentForm('${appt.id}')" style="cursor:pointer;"`;
 
       return `
-        <div>
-          <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;margin-bottom:6px;text-transform:uppercase;">Appointments</p>
-          <div style="display:flex;flex-direction:column;gap:6px;">
-            ${rows}
-            ${emptyState}
-            ${addButton}
-            ${form}
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#141411;border-radius:4px;border:1px solid #2a2925;">
+          <div style="flex:1;min-width:0;" ${labelAttrs}>
+            <p style="color:#f5f1ed;font-size:12px;font-weight:400;">${escapeHtml(appt.title)}</p>
+            ${meta ? `<p style="color:#8a8985;font-size:10px;margin-top:2px;">${escapeHtml(meta)}</p>` : ''}
           </div>
+          <button onclick="setAppointmentStatus('${appt.id}',false)"
+            style="width:28px;height:28px;border-radius:4px;border:1px solid #2a2925;background:${!value?'#2a2925':'#141411'};color:#8a8985;cursor:pointer;font-size:14px;">✕</button>
+          <button onclick="setAppointmentStatus('${appt.id}',true)"
+            style="width:28px;height:28px;border-radius:4px;border:1px solid #2a2925;background:${value?'#d97757':'#141411'};color:${value?'#0a0a0a':'#8a8985'};cursor:pointer;font-weight:600;">✓</button>
         </div>`;
     }
 
-    function renderAppointmentForm(key) {
+    function renderAppointmentEditModal() {
+      if (!state.appointmentFormOpen) return '';
+      const key       = dateKey(state.selectedDate);
       const editingId = state.editingAppointmentId;
-      const appts = state.appointmentsByDate[key] || [];
-      const editing = editingId ? appts.find(a => a.id === editingId) : null;
+      const editing   = editingId ? (state.appointmentsByDate[key] || []).find(a => a.id === editingId) : null;
+      if (!editing) return '';
+
       const activeHabits = state.habits.filter(h => !h.archived);
-
       const habitOptions = activeHabits.map(h =>
-        `<option value="${h.id}" ${editing && editing.habit_id === h.id ? 'selected' : ''}>${escapeHtml(h.name)}</option>`
+        `<option value="${h.id}" ${editing.habit_id === h.id ? 'selected' : ''}>${escapeHtml(h.name)}</option>`
       ).join('');
-
-      const inputStyle = 'width:100%;background:#0a0a0a;border:1px solid #2a2925;color:#f5f1ed;border-radius:4px;padding:8px 10px;font-size:12px;font-family:inherit;outline:none;';
+      const inputStyle = 'width:100%;background:#0a0a0a;border:1px solid #2a2925;color:#f5f1ed;border-radius:4px;padding:9px 10px;font-size:12px;font-family:inherit;outline:none;';
 
       return `
-        <form onsubmit="event.preventDefault();saveAppointment(this);" style="display:flex;flex-direction:column;gap:8px;padding:10px;background:#141411;border:1px solid #2a2925;border-radius:4px;">
-          <input name="title" placeholder="Title" required value="${editing ? escapeHtml(editing.title) : ''}" style="${inputStyle}">
-          <div style="display:flex;gap:8px;">
-            <input name="time" type="time" value="${editing && editing.time ? editing.time : ''}" style="${inputStyle};flex:1;">
-            <input name="location" placeholder="Location" value="${editing && editing.location ? escapeHtml(editing.location) : ''}" style="${inputStyle};flex:1;">
+        <div onclick="closeAppointmentForm()"
+          style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,0.6);display:flex;align-items:flex-end;justify-content:center;">
+          <div onclick="event.stopPropagation()"
+            style="background:#141411;border:1px solid #2a2925;border-top-left-radius:10px;border-top-right-radius:10px;padding:16px;width:100%;max-width:480px;">
+            <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:12px;">Edit Appointment</p>
+            <form onsubmit="event.preventDefault();saveAppointment(this);" style="display:flex;flex-direction:column;gap:8px;">
+              <input name="title" placeholder="Title" required value="${escapeHtml(editing.title)}" style="${inputStyle}">
+              <div style="display:flex;gap:8px;">
+                <input name="time" type="time" value="${editing.time || ''}" style="${inputStyle};flex:1;">
+                <input name="location" placeholder="Location" value="${editing.location ? escapeHtml(editing.location) : ''}" style="${inputStyle};flex:1;">
+              </div>
+              <textarea name="notes" placeholder="Notes (optional)" style="${inputStyle};resize:none;min-height:48px;">${editing.notes ? escapeHtml(editing.notes) : ''}</textarea>
+              <select name="habit_id" style="${inputStyle};">
+                <option value="">No linked habit</option>
+                ${habitOptions}
+              </select>
+              <p style="color:#7a7570;font-size:9px;">Linking a habit marks it complete for this day.</p>
+              <div style="display:flex;gap:8px;">
+                <button type="submit" style="flex:1;background:#d97757;border:none;color:#0a0a0a;border-radius:4px;padding:9px;font-size:12px;font-weight:600;cursor:pointer;">Save</button>
+                <button type="button" onclick="closeAppointmentForm()" style="flex:1;background:none;border:1px solid #2a2925;color:#8a8985;border-radius:4px;padding:9px;font-size:12px;cursor:pointer;">Cancel</button>
+              </div>
+              <button type="button" onclick="deleteAppointment('${editing.id}')" style="background:none;border:none;color:#7a7570;font-size:10px;cursor:pointer;padding:6px 0;text-align:center;">Delete appointment</button>
+            </form>
           </div>
-          <textarea name="notes" placeholder="Notes (optional)" style="${inputStyle};resize:none;min-height:48px;">${editing && editing.notes ? escapeHtml(editing.notes) : ''}</textarea>
-          <select name="habit_id" style="${inputStyle};">
-            <option value="">No linked habit</option>
-            ${habitOptions}
-          </select>
-          <p style="color:#7a7570;font-size:9px;">Linking a habit marks it complete for this day.</p>
-          <div style="display:flex;gap:8px;">
-            <button type="submit" style="flex:1;background:#d97757;border:none;color:#0a0a0a;border-radius:4px;padding:8px;font-size:11px;font-weight:600;cursor:pointer;">Save</button>
-            <button type="button" onclick="closeAppointmentForm()" style="flex:1;background:none;border:1px solid #2a2925;color:#8a8985;border-radius:4px;padding:8px;font-size:11px;cursor:pointer;">Cancel</button>
-          </div>
-        </form>`;
+        </div>`;
     }
 
     function renderDailyView() {
@@ -776,9 +778,20 @@
       const key    = dateKey(state.selectedDate);
       const future = isFutureDate(state.selectedDate);
 
-      const morningHabits = state.habits.filter(h =>
-        h.frequency === 'daily' && h.section === 'morning' && h.id !== state.prayerHabitId
-      );
+      // Appointments slot into Morning/Evening alongside habits, styled
+      // and toggled the same way. Anything without a section (shouldn't
+      // happen for newly created ones, but covers pre-migration rows)
+      // falls back to Evening.
+      const dayAppointments = (state.appointmentsByDate[key] || []).map(a => ({ ...a, __appointment: true }));
+      const morningAppts = dayAppointments.filter(a => a.section === 'morning');
+      const eveningAppts = dayAppointments.filter(a => a.section !== 'morning');
+
+      const morningHabits = [
+        ...state.habits.filter(h =>
+          h.frequency === 'daily' && h.section === 'morning' && h.id !== state.prayerHabitId
+        ),
+        ...morningAppts,
+      ];
       const eveningHabits = [
         ...state.habits.filter(h =>
           h.frequency === 'daily' && h.section === 'evening' && h.id !== state.prayerHabitId
@@ -786,6 +799,7 @@
         ...state.habits.filter(h =>
           h.frequency === 'weekly' && h.days && h.days.includes(dow) && h.section === 'evening'
         ),
+        ...eveningAppts,
       ];
       const weeklyHabits = state.habits.filter(h =>
         h.frequency === 'weekly' && h.days && h.days.includes(dow) && !h.section
@@ -826,7 +840,6 @@
         ${prayerRow}
         ${weeklyHabits.length  ? renderSection('Weekly',  weeklyHabits)  : ''}
         ${monthlyHabits.length ? renderSection('Monthly', monthlyHabits) : ''}
-        ${renderAppointments(state.selectedDate)}
         ${notesRow}
       </div>`;
     }
@@ -1191,6 +1204,7 @@
       document.getElementById('root').innerHTML = `
         ${renderCalendarOverlay()}
         ${renderQuickAddModal()}
+        ${renderAppointmentEditModal()}
         <div class="container">
           <div style="position:sticky;top:0;background:#0a0a0a;border-bottom:1px solid #2a2925;z-index:10;">
             <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #2a2925;">

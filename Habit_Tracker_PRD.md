@@ -216,6 +216,8 @@ This is a personal accountability tool, not a gamified productivity app. The cor
 | time | text | Free-text or time value, e.g. `14:30` |
 | location | text | Optional |
 | notes | text | Optional free-text notes |
+| section | text | `morning` or `evening` — derived automatically from `time` (before noon = morning, else evening; no time = evening), not manually picked |
+| completed | boolean | Default `false`. The yes/no toggle shown on the appointment's row — marks it done or missed/cancelled. Editable on any date, including past ones |
 | habit_id | uuid | Optional — references `habits`. When set, saving the appointment also upserts a completion for that habit on the appointment's `date`, marking it done. This is the off-schedule logging path (see §14). |
 
 Intentionally a separate table from `habits` — appointments are one-off, non-recurring events, not tracked habits.
@@ -292,13 +294,14 @@ All habits default to "no" / unchecked after today. Wake-up time defaults to `00
 ## 8a. Appointments Tracker
 
 - One-off appointments only — not recurring, not part of the habit model
-- Lives inside the **Daily view** as its own section, showing that day's appointments inline
-- **Global quick-add** — a coral "+" floating button, bottom-right, visible on every tab. Opens a bottom-sheet form with a date field (defaults to the currently viewed day) so an appointment can be added for any date without navigating there first
-- **Appointments tab** — a dedicated tab (grouped with Stats/Notes) listing all appointments split into Upcoming and Past; tapping an entry navigates to that date in the Daily view (same tap-to-navigate pattern as Notes)
-- Fields: **title**, **time**, **location**, **notes** (title required; time, location, notes optional)
+- **Slots into the Daily view's Morning/Evening sections alongside habits** — not a separate "Appointments" card. Each appointment renders as a row styled identically to a habit row (title + optional time/location subtext), with the same ✕/✓ toggle
+- **Completion toggle (✕/✓)** — marks the appointment done or missed/cancelled. Works on any date, including past ones, since appointments are often marked after the fact (missed or cancelled)
+- Every appointment has a **section** (Morning or Evening), **derived automatically from the time entered** rather than picked manually — before noon is Morning, noon or later is Evening, and no time given defaults to Evening. Avoids asking for the same information twice
+- Tapping an appointment's title (not the toggle) opens an edit sheet — title, time, location, notes, habit link, and delete — available for today/future dates; past-dated appointments can still have their completion toggled but their details aren't editable
+- **Global quick-add** — a coral "+" floating button, bottom-right, visible on every tab. Opens a bottom-sheet form (title, date, time, location, notes, optional habit link) so an appointment can be added for any date without navigating there first
+- **Appointments tab** — a dedicated tab (grouped with Notes) listing all appointments split into Upcoming and Past; tapping an entry navigates to that date in the Daily view (same tap-to-navigate pattern as Notes)
 - **Optional habit link** — appointment can be linked to an existing habit via a dropdown. When linked, saving the appointment also marks that habit complete for the appointment's date — this is the mechanism for logging a habit done off-schedule (see §14, resolved)
-- Rendered read-only for past dates in the Daily view — appointments on days before today can be viewed but not added/edited/deleted there (the quick-add FAB can still create a past-dated entry deliberately, e.g. backfilling)
-- Stored in a dedicated `appointments` table, separate from `habits`/`completions`
+- Stored in a dedicated `appointments` table, separate from `habits`/`completions`, with `section` and `completed` columns added alongside the original fields
 
 ---
 
@@ -318,11 +321,10 @@ Prayer tab is hidden unless a "Prayers" habit exists (group collapses to just "W
 - Left/right arrow navigation preserved alongside calendar
 - "Today" or day name + date shown in the date bar
 - Tapping "Discipline" always returns to today
-- Morning / Evening sections (prayer habit excluded from these)
+- Morning / Evening sections (prayer habit excluded from these) — **appointments for that date slot in here too** (see §8a), styled and toggled the same as habit rows, not shown as a separate section
 - Prayer section: read-only status indicator (Complete / Incomplete / Menstruating)
 - Monthly habits due today shown in a "Monthly" section
 - Weekly habits at bottom on their designated day(s)
-- **Appointments section** — one-off appointments for that date (see §8a), shown within the Daily view rather than as a separate tab
 - Notes textarea at bottom — per-date free text
 
 ### Mini-Calendar Overlay
@@ -379,7 +381,7 @@ Prayer tab is hidden unless a "Prayers" habit exists (group collapses to just "W
 ### Global Quick-Add
 - A coral "+" floating button, fixed bottom-right, visible on every tab
 - Opens a bottom-sheet form: title, **date** (defaults to the currently viewed day), time, location, notes, optional habit link
-- Lets an appointment be added for any date without first navigating to that day — the centralized counterpart to the per-day Appointments section in the Daily view
+- Lets an appointment be added for any date without first navigating to that day — the centralized counterpart to adding one inline via the Daily view's Morning/Evening rows
 
 ---
 
@@ -460,7 +462,7 @@ _(No open items currently — off-schedule habit logging was resolved via appoin
 - Year view only shows monthly + quarterly habits (daily/weekly excluded — too granular for a yearly grid)
 - Notes tab entries are tappable — tapping navigates to that date in Daily view; notes are still edited only from the Daily view textarea, not inline in Notes tab
 - Notes tab gets a month navigator (matching the `‹ Month Year ›` pattern) plus a keyword search box; both filters combine
-- Appointments are one-off only (no recurrence), use their own `appointments` table separate from `habits`, and can be added from either the Daily view's Appointments section or a global quick-add FAB; a dedicated Appointments tab lists everything for browsing
+- Appointments are one-off only (no recurrence), use their own `appointments` table separate from `habits`, and render as habit-styled rows inline in the Daily view's Morning/Evening sections (not their own card) with a yes/no completion toggle editable on any date; can be added from either the Daily view's inline edit flow or a global quick-add FAB; a dedicated Appointments tab lists everything for browsing
 - Past-dated appointments render read-only (no add/edit on historical days)
 - **Off-schedule habit logging resolved via appointment-habit linking**: an appointment can optionally link to an existing habit; saving it also marks that habit complete on the appointment's date. This replaces the need for a separate "log anyway" mechanism — logging a missed/off-schedule habit is done by creating an appointment for it on the day it actually happened
 - Stats view gets a second chart for wake-up time, mirroring the weight chart's layout and month navigation
