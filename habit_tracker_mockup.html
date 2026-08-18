@@ -66,6 +66,9 @@
       calendarViewDate: null,
       allNotes: null,
       yearCompletions: {},
+      appointmentsByDate: {},
+      appointmentFormOpen: false,
+      editingAppointmentId: null,
     };
 
     const dayNames   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -86,6 +89,12 @@
       const today = new Date(); today.setHours(0,0,0,0);
       const d = new Date(date); d.setHours(0,0,0,0);
       return d > today;
+    }
+
+    function isPastDate(date) {
+      const today = new Date(); today.setHours(0,0,0,0);
+      const d = new Date(date); d.setHours(0,0,0,0);
+      return d < today;
     }
 
     function getHabitValue(habitId, date) {
@@ -189,6 +198,19 @@
         .maybeSingle();
 
       state.dailyNotes[key] = data?.content || '';
+    }
+
+    async function loadAppointmentsForDate(date) {
+      const key = dateKey(date);
+      if (state.appointmentsByDate[key] !== undefined) return;
+
+      const { data } = await db.from('appointments')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .eq('date', key)
+        .order('time', { ascending: true, nullsFirst: false });
+
+      state.appointmentsByDate[key] = data || [];
     }
 
     async function loadCompletionsForRange(startDate, endDate) {
@@ -329,6 +351,61 @@
       );
     }
 
+    // ─── Appointments ─────────────────────────────────────────────────────────────
+
+    function openAppointmentForm(id) {
+      state.appointmentFormOpen = true;
+      state.editingAppointmentId = id || null;
+      render();
+    }
+
+    function closeAppointmentForm() {
+      state.appointmentFormOpen = false;
+      state.editingAppointmentId = null;
+      render();
+    }
+
+    async function saveAppointment(formEl) {
+      const key = dateKey(state.selectedDate);
+      const title    = formEl.title.value.trim();
+      const time     = formEl.time.value.trim();
+      const location = formEl.location.value.trim();
+      const notes    = formEl.notes.value.trim();
+      const habitId  = formEl.habit_id.value || null;
+      if (!title) return;
+
+      const editingId = state.editingAppointmentId;
+      const payload = {
+        user_id: currentUser.id, date: key,
+        title, time: time || null, location: location || null, notes: notes || null,
+        habit_id: habitId,
+      };
+
+      if (editingId) {
+        await db.from('appointments').update(payload).eq('id', editingId);
+      } else {
+        await db.from('appointments').insert(payload);
+      }
+
+      // Off-schedule habit logging: linking an appointment to a habit
+      // also marks that habit complete for the appointment's date.
+      if (habitId) {
+        await setHabit(habitId, true);
+      }
+
+      state.appointmentsByDate[key] = undefined; // invalidate cache
+      closeAppointmentForm();
+      await loadAppointmentsForDate(state.selectedDate);
+      render();
+    }
+
+    async function deleteAppointment(id) {
+      const key = dateKey(state.selectedDate);
+      await db.from('appointments').delete().eq('id', id);
+      state.appointmentsByDate[key] = (state.appointmentsByDate[key] || []).filter(a => a.id !== id);
+      render();
+    }
+
     // ─── Navigation ───────────────────────────────────────────────────────────────
 
     async function setActiveTab(tab) {
@@ -343,6 +420,8 @@
       d.setDate(d.getDate() + days);
       state.selectedDate = d;
       state.calendarOpen = false;
+      state.appointmentFormOpen = false;
+      state.editingAppointmentId = null;
       await loadTabData();
       render();
     }
@@ -368,6 +447,8 @@
       state.selectedDate = new Date();
       state.activeTab = 'daily';
       state.calendarOpen = false;
+      state.appointmentFormOpen = false;
+      state.editingAppointmentId = null;
       await loadTabData();
       render();
     }
@@ -399,6 +480,8 @@
     async function selectCalendarDate(y, m, d) {
       state.selectedDate = new Date(y, m, d);
       state.calendarOpen = false;
+      state.appointmentFormOpen = false;
+      state.editingAppointmentId = null;
       await loadTabData();
       render();
     }
@@ -411,7 +494,7 @@
       const date = state.selectedDate;
 
       if (tab === 'daily' || tab === 'prayer') {
-        await Promise.all([loadCompletionsForDate(date), loadNoteForDate(date)]);
+        await Promise.all([loadCompletionsForDate(date), loadNoteForDate(date), loadAppointmentsForDate(date)]);
       } else if (tab === 'weekly') {
         const dow   = date.getDay();
         const start = new Date(date); start.setDate(date.getDate() - dow);
@@ -546,6 +629,95 @@
 
     // ─── View renderers ───────────────────────────────────────────────────────────
 
+    function formatApptTime(t) {
+      if (!t) return '';
+      const [h, m] = t.split(':').map(Number);
+      if (isNaN(h)) return t;
+      const period = h >= 12 ? 'PM' : 'AM';
+      const h12 = h % 12 === 0 ? 12 : h % 12;
+      return `${h12}:${String(m||0).padStart(2,'0')} ${period}`;
+    }
+
+    function renderAppointments(date) {
+      const key   = dateKey(date);
+      const past  = isPastDate(date);
+      const appts = state.appointmentsByDate[key] || [];
+      const activeHabits = state.habits.filter(h => !h.archived);
+
+      const rows = appts.map(a => {
+        const habit = a.habit_id ? activeHabits.find(h => h.id === a.habit_id) : null;
+        const meta = [a.time ? formatApptTime(a.time) : null, a.location || null].filter(Boolean).join(' · ');
+        const actions = past ? '' : `
+          <div style="display:flex;gap:6px;">
+            <button onclick="openAppointmentForm('${a.id}')" style="background:none;border:none;color:#7a7570;cursor:pointer;font-size:11px;padding:2px 4px;">✎</button>
+            <button onclick="deleteAppointment('${a.id}')" style="background:none;border:none;color:#7a7570;cursor:pointer;font-size:11px;padding:2px 4px;">✕</button>
+          </div>`;
+        return `
+          <div style="display:flex;align-items:flex-start;gap:8px;padding:8px 10px;background:#141411;border-radius:4px;border:1px solid #2a2925;">
+            <div style="flex:1;min-width:0;">
+              <p style="color:#f5f1ed;font-size:12px;font-weight:400;">${escapeHtml(a.title)}</p>
+              ${meta ? `<p style="color:#8a8985;font-size:10px;margin-top:2px;">${escapeHtml(meta)}</p>` : ''}
+              ${a.notes ? `<p style="color:#7a7570;font-size:10px;margin-top:2px;">${escapeHtml(a.notes)}</p>` : ''}
+              ${habit ? `<p style="color:#d97757;font-size:9px;margin-top:4px;">↳ ${escapeHtml(habit.name)}</p>` : ''}
+            </div>
+            ${actions}
+          </div>`;
+      }).join('');
+
+      const emptyState = appts.length === 0 && !state.appointmentFormOpen
+        ? `<p style="color:#7a7570;font-size:11px;">${past ? 'No appointments logged.' : 'No appointments yet.'}</p>`
+        : '';
+
+      const addButton = (!past && !state.appointmentFormOpen)
+        ? `<button onclick="openAppointmentForm()" style="background:#141411;border:1px solid #2a2925;color:#8a8985;border-radius:4px;padding:7px 10px;font-size:11px;cursor:pointer;text-align:left;">+ Add appointment</button>`
+        : '';
+
+      const form = (!past && state.appointmentFormOpen) ? renderAppointmentForm(key) : '';
+
+      return `
+        <div>
+          <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;margin-bottom:6px;text-transform:uppercase;">Appointments</p>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            ${rows}
+            ${emptyState}
+            ${addButton}
+            ${form}
+          </div>
+        </div>`;
+    }
+
+    function renderAppointmentForm(key) {
+      const editingId = state.editingAppointmentId;
+      const appts = state.appointmentsByDate[key] || [];
+      const editing = editingId ? appts.find(a => a.id === editingId) : null;
+      const activeHabits = state.habits.filter(h => !h.archived);
+
+      const habitOptions = activeHabits.map(h =>
+        `<option value="${h.id}" ${editing && editing.habit_id === h.id ? 'selected' : ''}>${escapeHtml(h.name)}</option>`
+      ).join('');
+
+      const inputStyle = 'width:100%;background:#0a0a0a;border:1px solid #2a2925;color:#f5f1ed;border-radius:4px;padding:8px 10px;font-size:12px;font-family:inherit;outline:none;';
+
+      return `
+        <form onsubmit="event.preventDefault();saveAppointment(this);" style="display:flex;flex-direction:column;gap:8px;padding:10px;background:#141411;border:1px solid #2a2925;border-radius:4px;">
+          <input name="title" placeholder="Title" required value="${editing ? escapeHtml(editing.title) : ''}" style="${inputStyle}">
+          <div style="display:flex;gap:8px;">
+            <input name="time" type="time" value="${editing && editing.time ? editing.time : ''}" style="${inputStyle};flex:1;">
+            <input name="location" placeholder="Location" value="${editing && editing.location ? escapeHtml(editing.location) : ''}" style="${inputStyle};flex:1;">
+          </div>
+          <textarea name="notes" placeholder="Notes (optional)" style="${inputStyle};resize:none;min-height:48px;">${editing && editing.notes ? escapeHtml(editing.notes) : ''}</textarea>
+          <select name="habit_id" style="${inputStyle};">
+            <option value="">No linked habit</option>
+            ${habitOptions}
+          </select>
+          <p style="color:#7a7570;font-size:9px;">Linking a habit marks it complete for this day.</p>
+          <div style="display:flex;gap:8px;">
+            <button type="submit" style="flex:1;background:#d97757;border:none;color:#0a0a0a;border-radius:4px;padding:8px;font-size:11px;font-weight:600;cursor:pointer;">Save</button>
+            <button type="button" onclick="closeAppointmentForm()" style="flex:1;background:none;border:1px solid #2a2925;color:#8a8985;border-radius:4px;padding:8px;font-size:11px;cursor:pointer;">Cancel</button>
+          </div>
+        </form>`;
+    }
+
     function renderDailyView() {
       const dow    = state.selectedDate.getDay();
       const key    = dateKey(state.selectedDate);
@@ -601,6 +773,7 @@
         ${prayerRow}
         ${weeklyHabits.length  ? renderSection('Weekly',  weeklyHabits)  : ''}
         ${monthlyHabits.length ? renderSection('Monthly', monthlyHabits) : ''}
+        ${renderAppointments(state.selectedDate)}
         ${notesRow}
       </div>`;
     }
