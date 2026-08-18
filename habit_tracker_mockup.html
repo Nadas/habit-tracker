@@ -372,7 +372,6 @@
       const key = dateKey(state.selectedDate);
       const title    = formEl.title.value.trim();
       const time     = formEl.time.value.trim();
-      const location = formEl.location.value.trim();
       const notes    = formEl.notes.value.trim();
       const section  = deriveSection(time);
       const habitId  = formEl.habit_id.value || null;
@@ -381,7 +380,7 @@
       const editingId = state.editingAppointmentId;
       const payload = {
         user_id: currentUser.id, date: key,
-        title, time: time || null, location: location || null, notes: notes || null,
+        title, time: time || null, notes: notes || null,
         section, habit_id: habitId,
       };
 
@@ -439,7 +438,6 @@
       const title    = formEl.title.value.trim();
       const dateStr  = formEl.date.value; // already YYYY-MM-DD from <input type="date">
       const time     = formEl.time.value.trim();
-      const location = formEl.location.value.trim();
       const notes    = formEl.notes.value.trim();
       const section  = deriveSection(time);
       const habitId  = formEl.habit_id.value || null;
@@ -447,7 +445,7 @@
 
       await db.from('appointments').insert({
         user_id: currentUser.id, date: dateStr,
-        title, time: time || null, location: location || null, notes: notes || null,
+        title, time: time || null, notes: notes || null,
         section, habit_id: habitId,
       });
 
@@ -638,9 +636,16 @@
         return `<div style="width:10px;height:10px;border-radius:2px;background:${bg};opacity:${op};margin:0 auto;"></div>`;
       }
 
-      // Weekly habits: only show a dot on days the habit is scheduled
+      // Weekly habits: on a day the habit isn't normally scheduled, leave
+      // the cell blank UNLESS a completion actually exists for that day —
+      // e.g. logged off-schedule via a habit-linked appointment. A real
+      // completion should never be hidden just because it landed on an
+      // unscheduled day.
       if (h.frequency === 'weekly' && dateObj) {
-        if (!h.days || !h.days.includes(dateObj.getDay())) {
+        const scheduled = h.days && h.days.includes(dateObj.getDay());
+        const hasCompletion = (state.completionsByDate[k] || {})[h.id];
+        const isDone = hasCompletion === true || hasCompletion === 'true';
+        if (!scheduled && !isDone) {
           return `<div style="width:10px;height:10px;margin:0 auto;"></div>`;
         }
       }
@@ -715,7 +720,7 @@
 
     function renderAppointmentItem(appt) {
       const value = !!appt.completed;
-      const meta  = [appt.time ? formatApptTime(appt.time) : null, appt.location || null].filter(Boolean).join(' · ');
+      const meta  = appt.time ? formatApptTime(appt.time) : '';
       const past  = isPastDate(new Date(appt.date + 'T00:00:00'));
       const labelAttrs = past ? '' : `onclick="openAppointmentForm('${appt.id}')" style="cursor:pointer;"`;
 
@@ -753,10 +758,7 @@
             <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:12px;">Edit Appointment</p>
             <form onsubmit="event.preventDefault();saveAppointment(this);" style="display:flex;flex-direction:column;gap:8px;">
               <input name="title" placeholder="Title" required value="${escapeHtml(editing.title)}" style="${inputStyle}">
-              <div style="display:flex;gap:8px;">
-                <input name="time" type="time" value="${editing.time || ''}" style="${inputStyle};flex:1;">
-                <input name="location" placeholder="Location" value="${editing.location ? escapeHtml(editing.location) : ''}" style="${inputStyle};flex:1;">
-              </div>
+              <input name="time" type="time" value="${editing.time || ''}" style="${inputStyle}">
               <textarea name="notes" placeholder="Notes (optional)" style="${inputStyle};resize:none;min-height:48px;">${editing.notes ? escapeHtml(editing.notes) : ''}</textarea>
               <select name="habit_id" style="${inputStyle};">
                 <option value="">No linked habit</option>
@@ -1055,7 +1057,7 @@
       function entry(a) {
         const d = new Date(a.date + 'T00:00:00');
         const label = `${dayNames[d.getDay()]}, ${monthNames[d.getMonth()]} ${d.getDate()}`;
-        const meta = [a.time ? formatApptTime(a.time) : null, a.location || null].filter(Boolean).join(' · ');
+        const meta = a.time ? formatApptTime(a.time) : '';
         return `
           <button onclick="goToAppointmentDate('${a.date}')"
             style="display:block;width:100%;text-align:left;background:#141411;border:1px solid #2a2925;border-radius:4px;padding:12px 14px;margin-bottom:8px;cursor:pointer;font-family:inherit;">
@@ -1095,7 +1097,6 @@
                 <input name="date" type="date" required value="${todayStr}" style="${inputStyle};flex:1;">
                 <input name="time" type="time" style="${inputStyle};flex:1;">
               </div>
-              <input name="location" placeholder="Location" style="${inputStyle}">
               <textarea name="notes" placeholder="Notes (optional)" style="${inputStyle};resize:none;min-height:48px;"></textarea>
               <select name="habit_id" style="${inputStyle};">
                 <option value="">No linked habit</option>
