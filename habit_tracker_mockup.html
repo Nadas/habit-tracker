@@ -385,16 +385,23 @@
     // column has not been added yet, fall back to saving without it so nothing
     // is lost, and say so in the console.
     async function writeAppointment(payload, editingId) {
+      const wantedWork = !!payload.is_work;
       const run = (p) => editingId
         ? db.from('appointments').update(p).eq('id', editingId)
         : db.from('appointments').insert(p);
 
       let { error } = await run(payload);
+      if (error && 'is_work' in payload) {
+        const { is_work, ...rest } = payload;
+        ({ error } = await run(rest));
+        if (!error) { payload = rest; console.warn('appointments.is_work is missing, so the Work tag was not saved. Run the migration.'); }
+      }
       if (error && 'duration_min' in payload) {
         const { duration_min, ...rest } = payload;
         ({ error } = await run(rest));
         if (!error) console.warn('appointments.duration_min is missing, so the length was not saved. Run the migration.');
       }
+      if (!error && wantedWork && !('is_work' in payload)) alert('Saved, but the Work tag was not stored. Run plan_migration.sql in Supabase first.');
       if (error) { alert('Could not save: ' + error.message); return false; }
       return true;
     }
@@ -426,7 +433,7 @@
       const payload = {
         user_id: currentUser.id, date: newDate,
         title, time: time || null, notes: notes || null,
-        section, habit_id: habitId, duration_min: duration,
+        section, habit_id: habitId, duration_min: duration, is_work: !!formEl.is_work.checked,
       };
 
       const ok = await writeAppointment(payload, editingId);
@@ -497,7 +504,7 @@
       const ok = await writeAppointment({
         user_id: currentUser.id, date: dateStr,
         title, time: time || null, notes: notes || null,
-        section, habit_id: habitId, duration_min: duration,
+        section, habit_id: habitId, duration_min: duration, is_work: !!formEl.is_work.checked,
       }, null);
       if (!ok) return;
 
@@ -782,15 +789,15 @@
       const labelAttrs = past ? '' : `onclick="openAppointmentForm('${appt.id}')" style="cursor:pointer;"`;
 
       return `
-        <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#141411;border-radius:4px;border:1px solid #2a2925;">
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:${appt.is_work ? 'rgba(91,155,213,0.08)' : '#141411'};border-radius:4px;border:1px solid ${appt.is_work ? '#5b9bd5' : '#2a2925'};">
           <div style="flex:1;min-width:0;" ${labelAttrs}>
-            <p style="color:#f5f1ed;font-size:12px;font-weight:400;">${escapeHtml(appt.title)}</p>
+            <p style="color:${appt.is_work ? '#9cc4ea' : '#f5f1ed'};font-size:12px;font-weight:400;">${escapeHtml(appt.title)}</p>
             ${meta ? `<p style="color:#8a8985;font-size:10px;margin-top:2px;">${escapeHtml(meta)}</p>` : ''}
           </div>
           <button onclick="setAppointmentStatus('${appt.id}',false)"
             style="width:28px;height:28px;border-radius:4px;border:1px solid #2a2925;background:${!value?'#2a2925':'#141411'};color:#8a8985;cursor:pointer;font-size:14px;">✕</button>
           <button onclick="setAppointmentStatus('${appt.id}',true)"
-            style="width:28px;height:28px;border-radius:4px;border:1px solid #2a2925;background:${value?'#d97757':'#141411'};color:${value?'#0a0a0a':'#8a8985'};cursor:pointer;font-weight:600;">✓</button>
+            style="width:28px;height:28px;border-radius:4px;border:1px solid #2a2925;background:${value?(appt.is_work?'#5b9bd5':'#d97757'):'#141411'};color:${value?'#0a0a0a':'#8a8985'};cursor:pointer;font-weight:600;">✓</button>
         </div>`;
     }
 
@@ -821,11 +828,16 @@
               </div>
               ${planDurationSelect(editing.duration_min || 60, inputStyle)}
               <textarea name="notes" placeholder="Notes (optional)" style="${inputStyle};resize:none;min-height:48px;">${editing.notes ? escapeHtml(editing.notes) : ''}</textarea>
-              <select name="habit_id" style="${inputStyle};">
-                <option value="">No linked habit</option>
-                ${habitOptions}
-              </select>
-              <p style="color:#7a7570;font-size:9px;">Linking a habit marks it complete for this day.</p>
+<div style="display:flex;gap:8px;align-items:center;">
+                <select name="habit_id" style="${inputStyle};flex:1;">
+                  <option value="">No linked habit</option>
+                  ${habitOptions}
+                </select>
+                <label style="flex:none;display:flex;align-items:center;gap:6px;font-size:12px;color:#5b9bd5;cursor:pointer;white-space:nowrap;">
+                  <input type="checkbox" name="is_work" ${editing.is_work ? 'checked ' : ''}style="width:16px;height:16px;accent-color:#5b9bd5;margin:0;"> Work
+                </label>
+              </div>
+              <p style="color:#7a7570;font-size:9px;">Linking a habit marks it complete for this day. Work shows in blue.</p>
               <div style="display:flex;gap:8px;">
                 <button type="submit" style="flex:1;background:#d97757;border:none;color:#0a0a0a;border-radius:4px;padding:9px;font-size:12px;font-weight:600;cursor:pointer;">Save</button>
                 <button type="button" onclick="closeAppointmentForm()" style="flex:1;background:none;border:1px solid #2a2925;color:#8a8985;border-radius:4px;padding:9px;font-size:12px;cursor:pointer;">Cancel</button>
@@ -1121,9 +1133,9 @@
         const meta = a.time ? formatApptTime(a.time) : '';
         return `
           <button onclick="goToAppointmentDate('${a.date}')"
-            style="display:block;width:100%;text-align:left;background:#141411;border:1px solid #2a2925;border-radius:4px;padding:12px 14px;margin-bottom:8px;cursor:pointer;font-family:inherit;">
+            style="display:block;width:100%;text-align:left;background:${a.is_work ? 'rgba(91,155,213,0.08)' : '#141411'};border:1px solid ${a.is_work ? '#5b9bd5' : '#2a2925'};border-radius:4px;padding:12px 14px;margin-bottom:8px;cursor:pointer;font-family:inherit;">
             <p style="color:#8a8985;font-size:9px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:6px;">${label}</p>
-            <p style="color:#f5f1ed;font-size:12px;">${escapeHtml(a.title)}</p>
+            <p style="color:${a.is_work ? '#9cc4ea' : '#f5f1ed'};font-size:12px;">${escapeHtml(a.title)}</p>
             ${meta ? `<p style="color:#7a7570;font-size:10px;margin-top:2px;">${escapeHtml(meta)}</p>` : ''}
           </button>`;
       }
@@ -1162,11 +1174,16 @@
               </div>
               ${planDurationSelect(60, inputStyle)}
               <textarea name="notes" placeholder="Notes (optional)" style="${inputStyle};resize:none;min-height:48px;"></textarea>
-              <select name="habit_id" style="${inputStyle};">
-                <option value="">No linked habit</option>
-                ${habitOptions}
-              </select>
-              <p style="color:#7a7570;font-size:9px;">Linking a habit marks it complete for that day.</p>
+<div style="display:flex;gap:8px;align-items:center;">
+                <select name="habit_id" style="${inputStyle};flex:1;">
+                  <option value="">No linked habit</option>
+                  ${habitOptions}
+                </select>
+                <label style="flex:none;display:flex;align-items:center;gap:6px;font-size:12px;color:#5b9bd5;cursor:pointer;white-space:nowrap;">
+                  <input type="checkbox" name="is_work" style="width:16px;height:16px;accent-color:#5b9bd5;margin:0;"> Work
+                </label>
+              </div>
+              <p style="color:#7a7570;font-size:9px;">Linking a habit marks it complete for that day. Work shows in blue.</p>
               <div style="display:flex;gap:8px;margin-top:4px;">
                 <button type="submit" style="flex:1;background:#d97757;border:none;color:#0a0a0a;border-radius:4px;padding:10px;font-size:12px;font-weight:600;cursor:pointer;">Save</button>
                 <button type="button" onclick="closeQuickAdd()" style="flex:1;background:none;border:1px solid #2a2925;color:#8a8985;border-radius:4px;padding:10px;font-size:12px;cursor:pointer;">Cancel</button>
@@ -1292,16 +1309,17 @@
         const short = dur <= 30;
         const open   = isH ? `planHabitClick('${a.__habit}','${k}')`  : `planBlockClick('${a.id}','${k}')`;
         const toggle = isH ? `planHabitToggle('${a.__habit}','${k}')` : `planToggle('${a.id}','${k}')`;
-        const fill   = done ? '#141411' : isH ? 'rgba(245,241,237,0.06)' : 'rgba(217,119,87,0.18)';
-        const edge   = done ? '#2a2925' : isH ? '#444441' : '#d97757';
-        const bar    = done ? '#444441' : isH ? '#8a8985' : '#d97757';
+        const wk     = !!a.is_work && !isH;
+        const fill   = done ? '#141411' : isH ? 'rgba(245,241,237,0.06)' : wk ? 'rgba(91,155,213,0.20)' : 'rgba(217,119,87,0.18)';
+        const edge   = done ? '#2a2925' : isH ? '#444441' : wk ? '#5b9bd5' : '#d97757';
+        const bar    = done ? '#444441' : isH ? '#8a8985' : wk ? '#5b9bd5' : '#d97757';
         return `
           <div onclick="event.stopPropagation();${open}"
             style="position:absolute;top:${top}px;height:${ht}px;left:calc(${p.c * w}% + 2px);width:calc(${w}% - 4px);box-sizing:border-box;
               background:${fill};border:1px solid ${edge};border-left:3px solid ${bar};
               border-radius:3px;padding:2px 4px;overflow:hidden;cursor:pointer;z-index:2;display:flex;gap:5px;align-items:${short ? 'center' : 'flex-start'};">
             <button onclick="event.stopPropagation();${toggle}" aria-label="Mark done"
-              style="flex:none;width:18px;height:18px;border-radius:3px;border:1px solid ${done ? '#d97757' : '#8a8985'};background:${done ? '#d97757' : 'transparent'};color:#0a0a0a;font-size:11px;line-height:1;font-weight:600;cursor:pointer;padding:0;">${done ? '✓' : ''}</button>
+              style="flex:none;width:18px;height:18px;border-radius:3px;border:1px solid ${done ? (wk ? '#5b9bd5' : '#d97757') : '#8a8985'};background:${done ? (wk ? '#5b9bd5' : '#d97757') : 'transparent'};color:#0a0a0a;font-size:11px;line-height:1;font-weight:600;cursor:pointer;padding:0;">${done ? '✓' : ''}</button>
             <div style="min-width:0;font-size:11px;line-height:1.25;color:${done ? '#7a7570' : '#f5f1ed'};${done ? 'text-decoration:line-through;' : ''}">
               <div style="${short ? 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;' : 'overflow-wrap:anywhere;'}">${isH ? '<span style="color:#8a8985;">↻</span> ' : ''}${escapeHtml(a.title)}</div>
               ${!short ? `<div style="font-size:9px;color:#8a8985;text-decoration:none;">${formatApptTime(a.time)}</div>` : ''}
@@ -1341,7 +1359,7 @@
         const label = `<div style="padding:5px 0 3px;text-align:center;font-size:10px;color:${isT ? '#d97757' : '#8a8985'};">${dayShort[d.getDay()]} <b style="font-size:12px;font-weight:600;color:${isT ? '#d97757' : '#f5f1ed'};">${d.getDate()}</b></div>`;
         const chips = untimed.map(a => `
           <button onclick="planBlockClick('${a.id}','${k}')"
-            style="display:block;width:100%;text-align:left;margin:2px 0 0;padding:3px 5px;font-size:10px;font-family:inherit;border-radius:3px;border:1px solid #2a2925;background:#141411;color:${a.completed ? '#7a7570' : '#f5f1ed'};${a.completed ? 'text-decoration:line-through;' : ''}cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(a.title)}</button>`).join('');
+            style="display:block;width:100%;text-align:left;margin:2px 0 0;padding:3px 5px;font-size:10px;font-family:inherit;border-radius:3px;border:1px solid ${a.is_work ? '#5b9bd5' : '#2a2925'};background:${a.is_work ? 'rgba(91,155,213,0.15)' : '#141411'};color:${a.completed ? '#7a7570' : '#f5f1ed'};${a.completed ? 'text-decoration:line-through;' : ''}cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(a.title)}</button>`).join('');
         head += `<div style="border-left:1px solid #2a2925;padding:0 2px ${untimed.length ? 4 : 0}px;${wk ? 'background:#0e0e0c;' : ''}">${label}${chips}</div>`;
       });
       head += `</div>`;
