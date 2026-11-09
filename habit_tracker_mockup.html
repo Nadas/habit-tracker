@@ -366,6 +366,7 @@
     }
 
     async function togglePrayer(prayerId) {
+      if (isFutureDate(state.selectedDate)) return;
       const key = dateKey(state.selectedDate);
       if (!state.prayersByDate[key]) state.prayersByDate[key] = { ...PRAYER_DEFAULT };
       state.prayersByDate[key][prayerId] = !state.prayersByDate[key][prayerId];
@@ -967,15 +968,34 @@
       const status         = prayerStatus(prayers, future);
       const hasPrayerHabit = !!state.prayerHabitId;
 
+      const prayerOff   = !!prayers.menstruating;
+      const prayerCount = PRAYER_KEYS.filter(k => prayers[k]).length;
+      const prayerNames = { fajr: ['F', 'Fajr'], dhuhr: ['D', 'Dhuhr'], asr: ['A', 'Asr'], maghrib: ['M', 'Maghrib'], isha: ['I', 'Isha'] };
+      const prayerStatusText = prayerOff ? 'Not required' : future ? '' : `${prayerCount} of 5`;
+      const prayerDots = PRAYER_KEYS.map(k => {
+        const done = !future && !prayerOff && prayers[k];
+        return `<button onclick="togglePrayer('${k}')" aria-label="${prayerNames[k][1]}" aria-pressed="${done}" ${(prayerOff || future) ? 'disabled' : ''}
+          style="background:none;border:none;padding:4px 6px;cursor:${(prayerOff || future) ? 'default' : 'pointer'};text-align:center;font-family:inherit;">
+          <div style="width:30px;height:30px;border-radius:50%;margin:0 auto 3px;border:1px solid ${done ? '#d97757' : '#2a2925'};background:${done ? '#d97757' : '#141411'};"></div>
+          <div style="font-size:11px;color:#8a8985;">${prayerNames[k][0]}</div>
+        </button>`;
+      }).join('');
       const prayerRow = hasPrayerHabit ? `
-        <div>
+        <div data-prayer-card>
           <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;margin-bottom:6px;text-transform:uppercase;">Prayer</p>
-          <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#141411;border-radius:4px;border:1px solid #2a2925;">
-            <div style="flex:1;"><p style="color:#f5f1ed;font-size:12px;font-weight:400;">Prayers</p></div>
-            <div style="display:flex;align-items:center;gap:6px;">
-              <div style="width:6px;height:6px;border-radius:50%;background:${status.dot};"></div>
-              <span style="color:#8a8985;font-size:11px;">${status.text}</span>
+          <div style="padding:10px 12px;background:#141411;border-radius:4px;border:1px solid ${prayerOff ? '#7a3535' : '#2a2925'};">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+              <span style="color:#f5f1ed;font-size:12px;">Prayers</span>
+              <span style="font-size:11px;color:${prayerOff ? '#c07a7a' : '#8a8985'};">${prayerStatusText}</span>
+              <button onclick="toggleMenstruating()" role="switch" aria-checked="${prayerOff}" aria-label="Period"
+                style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:#8a8985;font-size:11px;cursor:pointer;padding:2px 0;font-family:inherit;">
+                Period
+                <span style="width:30px;height:18px;border-radius:9px;background:${prayerOff ? '#7a3535' : '#2a2925'};position:relative;display:inline-block;transition:background 0.2s;">
+                  <span style="position:absolute;top:2px;left:${prayerOff ? '14px' : '2px'};width:14px;height:14px;border-radius:50%;background:#0a0a0a;transition:left 0.2s;"></span>
+                </span>
+              </button>
             </div>
+            <div style="display:flex;justify-content:space-between;${prayerOff ? 'opacity:0.35;' : ''}">${prayerDots}</div>
           </div>
         </div>` : '';
 
@@ -1722,12 +1742,12 @@
       if (planEl && state.planScroll !== null) state.planScroll = planEl.scrollTop;
 
       // Prayer tab only visible if user has a Prayers habit
-      if (state.activeTab === 'prayer' && !state.prayerHabitId) state.activeTab = 'daily';
+      if (state.activeTab === 'prayer') state.activeTab = 'daily';
 
       // Tab groups with | dividers
       const tabLabels = { daily:'Today', plan:'Plan', prayer:'Prayers', weekly:'Week', monthly:'Month', year:'Year', notes:'Notes', appointments:'Appts' };
       const groups = [
-        ['daily', 'plan', 'prayer'].filter(t => t !== 'prayer' || !!state.prayerHabitId),
+        ['daily', 'plan'],
         ['weekly', 'monthly', 'year'],
         ['notes', 'appointments'],
       ];
@@ -1911,7 +1931,7 @@
       state.prayerHabitId = state.habits.find(h => h.name === 'Prayers')?.id || null;
 
       const wantTab = new URLSearchParams(window.location.search).get('tab');
-      if (['daily','plan','prayer','weekly','monthly','year','notes','appointments'].includes(wantTab)) {
+      if (['daily','plan','weekly','monthly','year','notes','appointments'].includes(wantTab)) {
         state.activeTab = wantTab;
         state.selectedDate = new Date();
       }
