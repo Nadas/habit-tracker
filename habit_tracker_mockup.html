@@ -1681,7 +1681,8 @@
       // and settings icons on the tab row, so the header is two slim rows.
       const profileBtn  = `<button onclick="goToProfile()" aria-label="Profile" style="background:none;border:none;color:#8a8985;cursor:pointer;padding:4px 8px;display:flex;align-items:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg></button>`;
       const settingsBtn = `<button onclick="goToSettings()" aria-label="Manage habits" style="background:none;border:none;color:#8a8985;cursor:pointer;padding:4px 8px;display:flex;align-items:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="8" cy="6" r="2" fill="#0a0a0a"/><circle cx="16" cy="12" r="2" fill="#0a0a0a"/><circle cx="10" cy="18" r="2" fill="#0a0a0a"/></svg></button>`;
-      const compactPlan = tab === 'plan' && window.innerWidth >= 700;
+      const compactPlan = window.innerWidth >= 700;
+      if (compactPlan) dateNavHtml = dateNavHtml.split('padding:10px 14px').join('padding:2px 14px');
       const headerHtml = compactPlan ? `
           <div style="position:sticky;top:0;background:#0a0a0a;border-bottom:1px solid #2a2925;z-index:10;">
             <div style="display:flex;align-items:center;padding:0 6px;border-bottom:1px solid #2a2925;">
