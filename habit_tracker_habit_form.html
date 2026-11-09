@@ -237,6 +237,26 @@
       </div>
     </div>
 
+    <!-- Calendar time (daily/weekly/monthly, yes/no only) -->
+    <div class="conditional" id="timeSection">
+      <div class="form-section">
+        <label for="habitTime">Time on calendar (optional)</label>
+        <div style="display:flex;gap:8px;">
+          <input type="time" id="habitTime" style="flex:1;" />
+          <select id="habitDuration" style="flex:1;">
+            <option value="15">15 min</option>
+            <option value="20">20 min</option>
+            <option value="30" selected>30 min</option>
+            <option value="45">45 min</option>
+            <option value="60">1 hour</option>
+            <option value="90">1.5 hours</option>
+            <option value="120">2 hours</option>
+          </select>
+        </div>
+        <p class="note">Leave the time empty to keep this habit off the Plan calendar</p>
+      </div>
+    </div>
+
     <div class="button-group">
       <button class="secondary" onclick="goBack()">Cancel</button>
       <button class="primary" id="submitBtn" onclick="submitForm()">Add Habit</button>
@@ -279,6 +299,7 @@
       document.querySelectorAll('input[name="type"]').forEach(r =>
         r.addEventListener('change', e => {
           document.getElementById('unitSection').classList.toggle('visible', e.target.value === 'number');
+          updateTimeSection();
         })
       );
 
@@ -378,6 +399,15 @@
         // Legacy day-of-month: just leave defaults, user can update
       }
 
+      if (h.time) document.getElementById('habitTime').value = String(h.time).slice(0,5);
+      if (h.duration_min) {
+        const dSel = document.getElementById('habitDuration');
+        if (![...dSel.options].some(o => o.value == h.duration_min)) {
+          dSel.add(new Option(h.duration_min + ' min', h.duration_min));
+        }
+        dSel.value = h.duration_min;
+      }
+
       if (h.section) {
         const sEl = document.getElementById(`section-${h.section}`);
         if (sEl) sEl.checked = true;
@@ -420,10 +450,21 @@
         archived: false,
       };
 
+      const timeOk = type === 'yes/no' && frequency !== 'quarterly';
+      const timeVal = document.getElementById('habitTime').value;
+      payload.time = timeOk && timeVal ? timeVal : null;
+      payload.duration_min = timeOk && timeVal ? parseInt(document.getElementById('habitDuration').value) : null;
+
       let error;
+      const timeCols = { time: payload.time, duration_min: payload.duration_min };
 
       if (mode === 'edit') {
         ({ error } = await db.from('habits').update(payload).eq('id', habitId));
+        if (error && /time|duration_min/i.test(error.message || '')) {
+          delete payload.time; delete payload.duration_min;
+          ({ error } = await db.from('habits').update(payload).eq('id', habitId));
+          if (!error && timeCols.time) alert('Saved, but the time was not stored. Run plan_migration.sql in Supabase first.');
+        }
       } else {
         const { data: existing } = await db.from('habits')
           .select('sort_order')
@@ -435,6 +476,11 @@
         payload.sort_order = nextOrder;
 
         ({ error } = await db.from('habits').insert(payload));
+        if (error && /time|duration_min/i.test(error.message || '')) {
+          delete payload.time; delete payload.duration_min;
+          ({ error } = await db.from('habits').insert(payload));
+          if (!error && timeCols.time) alert('Saved, but the time was not stored. Run plan_migration.sql in Supabase first.');
+        }
       }
 
       if (error) {
@@ -459,6 +505,13 @@
       if (document.querySelector('input[name="type"]:checked')?.value === 'number') {
         document.getElementById('unitSection').classList.add('visible');
       }
+      updateTimeSection();
+    }
+
+    function updateTimeSection() {
+      const f = document.querySelector('input[name="frequency"]:checked')?.value;
+      const t = document.querySelector('input[name="type"]:checked')?.value;
+      document.getElementById('timeSection').classList.toggle('visible', f !== 'quarterly' && t !== 'number');
     }
 
     function showError(msg) {
