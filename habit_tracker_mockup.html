@@ -78,7 +78,6 @@
       allAppointments: null,
       quickAddOpen: false,
       quickAddDefaults: null,
-      planView: (() => { try { return localStorage.getItem('planView') === 'week' ? 'week' : 'day'; } catch (e) { return 'day'; } })(),
       planScroll: null,        // null = scroll to "now" on next render
       planLastTouch: Date.now(),
     };
@@ -621,8 +620,7 @@
         await Promise.all([loadCompletionsForDate(date), loadNoteForDate(date), loadAppointmentsForDate(date)]);
       } else if (tab === 'plan') {
         const days = planDays();
-        if (state.planView === 'week') await loadAppointmentsForRange(days[0], days[6]);
-        else await loadAppointmentsForDate(date);
+        await loadAppointmentsForRange(days[0], days[6]);
       } else if (tab === 'appointments') {
         await loadAllAppointments();
       } else if (tab === 'weekly') {
@@ -1212,13 +1210,11 @@
       return Math.max(15, Math.min(a.duration_min || 60, 1440 - start));
     }
 
+    // Sunday to Saturday around the selected date.
     function planDays() {
-      if (state.planView === 'week') {
-        const s = new Date(state.selectedDate);
-        s.setDate(s.getDate() - s.getDay());
-        return Array.from({ length: 7 }, (_, i) => { const d = new Date(s); d.setDate(s.getDate() + i); return d; });
-      }
-      return [new Date(state.selectedDate)];
+      const s = new Date(state.selectedDate);
+      s.setDate(s.getDate() - s.getDay());
+      return Array.from({ length: 7 }, (_, i) => { const d = new Date(s); d.setDate(s.getDate() + i); return d; });
     }
 
     // Side-by-side columns for overlapping blocks.
@@ -1276,9 +1272,9 @@
               border-radius:3px;padding:2px 4px;overflow:hidden;cursor:pointer;z-index:2;display:flex;gap:5px;align-items:${short ? 'center' : 'flex-start'};">
             <button onclick="event.stopPropagation();planToggle('${a.id}','${k}')" aria-label="Mark done"
               style="flex:none;width:18px;height:18px;border-radius:3px;border:1px solid ${done ? '#d97757' : '#8a8985'};background:${done ? '#d97757' : 'transparent'};color:#0a0a0a;font-size:11px;line-height:1;font-weight:600;cursor:pointer;padding:0;">${done ? '✓' : ''}</button>
-            <div style="min-width:0;font-size:${week ? 10 : 11}px;line-height:1.25;color:${done ? '#7a7570' : '#f5f1ed'};${done ? 'text-decoration:line-through;' : ''}">
+            <div style="min-width:0;font-size:11px;line-height:1.25;color:${done ? '#7a7570' : '#f5f1ed'};${done ? 'text-decoration:line-through;' : ''}">
               <div style="${short ? 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;' : 'overflow-wrap:anywhere;'}">${escapeHtml(a.title)}</div>
-              ${!week && !short ? `<div style="font-size:9px;color:#8a8985;text-decoration:none;">${formatApptTime(a.time)}</div>` : ''}
+              ${!short ? `<div style="font-size:9px;color:#8a8985;text-decoration:none;">${formatApptTime(a.time)}</div>` : ''}
             </div>
           </div>`;
       }).join('');
@@ -1291,29 +1287,17 @@
       }
 
       const bg = isT ? 'rgba(217,119,87,0.05)' : wk ? '#0e0e0c' : 'transparent';
-      return `<div onclick="planGridClick(event,'${k}')"
+      return `<div data-day="${k}" onclick="planGridClick(event,'${k}')"
         style="position:relative;height:${H}px;border-left:1px solid #2a2925;cursor:cell;background:${bg};">${lines}${blocks}${now}</div>`;
     }
 
     function renderPlanView() {
-      const week     = state.planView === 'week';
+      const week     = true;
       const days     = planDays();
       const todayKey = dateKey(new Date());
       const H        = 24 * 60 * PLAN_PX;
       const grid     = `44px repeat(${days.length},${week ? 'minmax(84px,1fr)' : 'minmax(0,1fr)'})`;
       const dayShort = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-
-      const seg = (v, label) => {
-        const on = state.planView === v;
-        return `<button onclick="setPlanView('${v}')"
-          style="padding:5px 14px;font-size:11px;border:none;cursor:pointer;background:${on ? '#d97757' : 'transparent'};color:${on ? '#0a0a0a' : '#8a8985'};font-weight:${on ? 600 : 400};">${label}</button>`;
-      };
-      const toolbar = `
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-          <div style="display:flex;border:1px solid #2a2925;border-radius:4px;overflow:hidden;">${seg('day', 'Day')}${seg('week', 'Week')}</div>
-          <button onclick="planToday()"
-            style="background:none;border:1px solid #2a2925;color:#8a8985;border-radius:4px;padding:5px 12px;font-size:11px;cursor:pointer;">Today</button>
-        </div>`;
 
       // Sticky header: day names (week only) and appointments without a time.
       const anyUntimed = days.some(d => (state.appointmentsByDate[dateKey(d)] || []).some(a => planApptStart(a) === null));
@@ -1324,11 +1308,7 @@
         const isT = k === todayKey;
         const wk  = d.getDay() >= 5;
         const untimed = (state.appointmentsByDate[k] || []).filter(a => planApptStart(a) === null);
-        const label = week
-          ? `<button onclick="planOpenDay('${k}')"
-               style="background:none;border:none;cursor:pointer;width:100%;padding:5px 0 3px;font-size:10px;font-family:inherit;color:${isT ? '#d97757' : '#8a8985'};">
-               ${dayShort[d.getDay()]} <b style="font-size:12px;font-weight:600;color:${isT ? '#d97757' : '#f5f1ed'};">${d.getDate()}</b></button>`
-          : '';
+        const label = `<div style="padding:5px 0 3px;text-align:center;font-size:10px;color:${isT ? '#d97757' : '#8a8985'};">${dayShort[d.getDay()]} <b style="font-size:12px;font-weight:600;color:${isT ? '#d97757' : '#f5f1ed'};">${d.getDate()}</b></div>`;
         const chips = untimed.map(a => `
           <button onclick="planBlockClick('${a.id}','${k}')"
             style="display:block;width:100%;text-align:left;margin:2px 0 0;padding:3px 5px;font-size:10px;font-family:inherit;border-radius:3px;border:1px solid #2a2925;background:#141411;color:${a.completed ? '#7a7570' : '#f5f1ed'};${a.completed ? 'text-decoration:line-through;' : ''}cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(a.title)}</button>`).join('');
@@ -1345,7 +1325,7 @@
         ${days.map(d => renderPlanColumn(d, todayKey, week)).join('')}
       </div>`;
 
-      return `${toolbar}
+      return `
         <div id="plan-scroll" style="overflow:auto;height:60vh;border:1px solid #2a2925;border-radius:6px;background:#0a0a0a;-webkit-overflow-scrolling:touch;">
           <div style="min-width:${week ? 680 : 0}px;">${head}${body}</div>
         </div>`;
@@ -1397,19 +1377,6 @@
       state.allAppointments = null;
     }
 
-    async function setPlanView(v) {
-      state.planView = v;
-      try { localStorage.setItem('planView', v); } catch (e) {}
-      await loadTabData();
-      render();
-    }
-
-    async function planOpenDay(k) {
-      const [y, m, d] = k.split('-').map(Number);
-      state.selectedDate = new Date(y, m - 1, d);
-      await setPlanView('day');
-    }
-
     async function planToday() {
       state.selectedDate = new Date();
       state.planScroll = null;
@@ -1424,6 +1391,15 @@
       const touch = () => { state.planLastTouch = Date.now(); };
       document.addEventListener('pointerdown', touch, { passive: true });
       document.addEventListener('scroll', touch, true);
+      let resizeTimer = null;
+      const refit = () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+          if (state.activeTab === 'plan' && !state.quickAddOpen && !state.appointmentFormOpen) render();
+        }, 150);
+      };
+      window.addEventListener('resize', refit);
+      window.addEventListener('orientationchange', refit);
       let lastDay = dateKey(new Date());
       setInterval(async () => {
         if (state.activeTab !== 'plan' || state.quickAddOpen || state.appointmentFormOpen || state.calendarOpen) return;
@@ -1434,6 +1410,7 @@
             lastDay = nowKey;
             state.planScroll = null;
           } else if (Date.now() - state.planLastTouch > 5 * 60 * 1000) {
+            state.selectedDate = new Date();
             state.planScroll = null;
             state.planLastTouch = Date.now();
           }
@@ -1489,7 +1466,7 @@
             <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;">${label}</p>
             <button onclick="changeMonth(1)"  style="background:none;border:none;color:#8a8985;cursor:pointer;font-size:18px;padding:4px 8px;">›</button>
           </div>`;
-      } else if (tab === 'weekly' || (tab === 'plan' && state.planView === 'week')) {
+      } else if (tab === 'weekly') {
         const dow  = state.selectedDate.getDay();
         const s    = new Date(state.selectedDate); s.setDate(s.getDate() - dow);
         const e    = new Date(s); e.setDate(s.getDate() + 6);
@@ -1506,6 +1483,20 @@
             <button onclick="changeYear(-1)" style="background:none;border:none;color:#8a8985;cursor:pointer;font-size:18px;padding:4px 8px;">‹</button>
             <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;">${state.selectedDate.getFullYear()}</p>
             <button onclick="changeYear(1)"  style="background:none;border:none;color:#8a8985;cursor:pointer;font-size:18px;padding:4px 8px;">›</button>
+          </div>`;
+      } else if (tab === 'plan') {
+        const ps = new Date(state.selectedDate); ps.setDate(ps.getDate() - ps.getDay());
+        const pe = new Date(ps); pe.setDate(ps.getDate() + 6);
+        const plabel = ps.getMonth() === pe.getMonth()
+          ? `${monthShort[ps.getMonth()]} ${ps.getDate()} – ${pe.getDate()}`
+          : `${monthShort[ps.getMonth()]} ${ps.getDate()} – ${monthShort[pe.getMonth()]} ${pe.getDate()}`;
+        dateNavHtml = `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:2px 14px;border-bottom:1px solid #2a2925;">
+            <button onclick="changeDate(-7)" aria-label="Previous week" style="background:none;border:none;color:#8a8985;cursor:pointer;font-size:18px;padding:4px 14px;">‹</button>
+            <button onclick="planToday()" title="Back to this week" style="background:none;border:none;cursor:pointer;padding:6px 12px;">
+              <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;">${plabel}</p>
+            </button>
+            <button onclick="changeDate(7)" aria-label="Next week" style="background:none;border:none;color:#8a8985;cursor:pointer;font-size:18px;padding:4px 14px;">›</button>
           </div>`;
       } else if (tab === 'notes' || tab === 'appointments') {
         dateNavHtml = ''; // no date nav for notes / appointments list
@@ -1529,7 +1520,7 @@
           </div>`;
       }
 
-      const contentMax = tab === 'plan' ? (state.planView === 'week' ? 'none' : '720px') : '480px';
+      const contentMax = tab === 'plan' ? 'none' : '480px';
 
       let content = '';
       if      (tab === 'daily')   content = renderDailyView();
@@ -1541,11 +1532,7 @@
       else if (tab === 'plan')    content = renderPlanView();
       else if (tab === 'appointments') content = renderAppointmentsTabView();
 
-      document.getElementById('root').innerHTML = `
-        ${renderCalendarOverlay()}
-        ${renderQuickAddModal()}
-        ${renderAppointmentEditModal()}
-        <div class="container">
+      const defaultHeader = `
           <div style="position:sticky;top:0;background:#0a0a0a;border-bottom:1px solid #2a2925;z-index:10;">
             <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #2a2925;">
               <button onclick="goToProfile()" style="background:none;border:none;color:#8a8985;cursor:pointer;padding:4px 8px;display:flex;align-items:center;">
@@ -1566,6 +1553,29 @@
               ${tabGroupDivs[0]}${tabPipe}${tabGroupDivs[1]}${tabPipe}${tabGroupDivs[2]}
             </div>
           </div>
+      `;
+
+      // Wide screens (iPad): Plan drops the title row and puts the profile
+      // and settings icons on the tab row, so the header is two slim rows.
+      const profileBtn  = `<button onclick="goToProfile()" aria-label="Profile" style="background:none;border:none;color:#8a8985;cursor:pointer;padding:4px 8px;display:flex;align-items:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg></button>`;
+      const settingsBtn = `<button onclick="goToSettings()" aria-label="Manage habits" style="background:none;border:none;color:#8a8985;cursor:pointer;padding:4px 8px;display:flex;align-items:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="8" cy="6" r="2" fill="#0a0a0a"/><circle cx="16" cy="12" r="2" fill="#0a0a0a"/><circle cx="10" cy="18" r="2" fill="#0a0a0a"/></svg></button>`;
+      const compactPlan = tab === 'plan' && window.innerWidth >= 700;
+      const headerHtml = compactPlan ? `
+          <div style="position:sticky;top:0;background:#0a0a0a;border-bottom:1px solid #2a2925;z-index:10;">
+            <div style="display:flex;align-items:center;padding:0 6px;border-bottom:1px solid #2a2925;">
+              ${profileBtn}
+              <div style="display:flex;flex:1;align-items:stretch;padding:0 6px;">${tabGroupDivs[0]}${tabPipe}${tabGroupDivs[1]}${tabPipe}${tabGroupDivs[2]}</div>
+              ${settingsBtn}
+            </div>
+            ${dateNavHtml}
+          </div>` : defaultHeader;
+
+      document.getElementById('root').innerHTML = `
+        ${renderCalendarOverlay()}
+        ${renderQuickAddModal()}
+        ${renderAppointmentEditModal()}
+        <div class="container">
+          ${headerHtml}
           <div style="padding:12px 14px;max-width:${contentMax};margin:0 auto;">
             ${content}
           </div>
