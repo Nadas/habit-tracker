@@ -94,6 +94,10 @@
     }
     .modal-actions .cancel  { background: #2a2925; color: #8a8985; }
     .modal-actions .confirm { background: #8a4a3a; color: #f5f1ed; }
+    @media (min-width: 700px) {
+      .content { max-width: 1200px; }
+      #list-archived { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 16px; }
+    }
     .loading-state { text-align: center; padding: 40px; color: #7a7570; font-size: 12px; }
   </style>
 </head>
@@ -134,6 +138,7 @@
     let habits      = [];
     let deletingId  = null;
     let draggedId   = null;
+    let lastWide    = false;
     let touchClone  = null;
     let touchOffsetX = 0, touchOffsetY = 0;
 
@@ -340,8 +345,16 @@
         { title: 'Archived',  list: archived,                                         id: 'archived'  },
       ];
 
-      document.getElementById('content').innerHTML =
-        groups.map(g => renderGroup(g.title, g.list, g.id)).join('');
+      const g = (id) => { const x = groups.find(y => y.id === id); return renderGroup(x.title, x.list, x.id); };
+      lastWide = window.innerWidth >= 700;
+      document.getElementById('content').innerHTML = lastWide
+        ? `<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 16px;align-items:start;">
+             <div data-col="daily">${g('daily')}</div>
+             <div data-col="weekly">${g('weekly')}</div>
+             <div data-col="monthly">${g('monthly')}${g('quarterly')}</div>
+             <div data-col="archived" style="grid-column:1/-1;">${g('archived')}</div>
+           </div>`
+        : groups.map(x => renderGroup(x.title, x.list, x.id)).join('');
 
       attachDragListeners();
     }
@@ -425,6 +438,10 @@
         });
       });
     }
+
+    window.addEventListener('resize', () => {
+      if ((window.innerWidth >= 700) !== lastWide && !draggedId && habits.length) render();
+    });
 
     initApp();
   </script>
