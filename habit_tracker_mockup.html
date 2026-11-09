@@ -691,7 +691,7 @@
 
       return `
         <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#141411;border-radius:4px;border:1px solid #2a2925;">
-          <div style="flex:1;"><p style="color:#f5f1ed;font-size:12px;font-weight:400;">${habit.name}</p></div>
+          <div style="flex:1;min-width:0;"><p style="color:#f5f1ed;font-size:12px;font-weight:400;">${habit.name}</p>${(habit.time && isWide()) ? `<p style="color:#8a8985;font-size:10px;margin-top:2px;">${escapeHtml(formatApptTime(habit.time))}</p>` : ''}</div>
           <button onclick="setHabit('${habit.id}',false)"
             style="width:28px;height:28px;border-radius:4px;border:1px solid #2a2925;background:${!value?'#2a2925':'#141411'};color:#8a8985;cursor:pointer;font-size:14px;">✕</button>
           <button onclick="setHabit('${habit.id}',true)"
@@ -903,10 +903,10 @@
           h.frequency === 'weekly' && h.days && h.days.includes(dow) && h.section === 'evening' && habitActiveOn(h, state.selectedDate)
         ),
       ];
-      const weeklyHabits = state.habits.filter(h =>
+      let weeklyHabits = state.habits.filter(h =>
         h.frequency === 'weekly' && h.days && h.days.includes(dow) && !h.section && habitActiveOn(h, state.selectedDate)
       );
-      const monthlyHabits = state.habits.filter(h =>
+      let monthlyHabits = state.habits.filter(h =>
         h.frequency === 'monthly' && isMonthlyHabitDueToday(h, state.selectedDate) && habitActiveOn(h, state.selectedDate)
       );
 
@@ -960,7 +960,10 @@
       };
       const sortKey = (item, b) => item.time ? toMin(item.time) : (b === 'before' ? -1 : b === 'during' ? PLAN_WORK.start : 1441);
       const cols = { before: [], during: [], after: [] };
-      [...morningHabits, ...eveningHabits].forEach((item, i) => {
+      const timedRecurring = [...weeklyHabits, ...monthlyHabits].filter(h => h.time);
+      weeklyHabits  = weeklyHabits.filter(h => !h.time);
+      monthlyHabits = monthlyHabits.filter(h => !h.time);
+      [...morningHabits, ...eveningHabits, ...timedRecurring].forEach((item, i) => {
         const b = bucketOf(item);
         cols[b].push({ item, k: sortKey(item, b), i });
       });
