@@ -264,6 +264,7 @@
             <div class="habit-meta">
               <span class="badge freq-${h.frequency}">${getFreqLabel(h)}</span>
               <span class="badge">${h.type === 'yes/no' ? '✓/✕' : '##'}</span>
+              ${h.time ? `<span class="badge" style="color:#d97757">↻ ${String(h.time).slice(0,5)}${h.duration_min ? ' · ' + h.duration_min + 'm' : ''}</span>` : ''}
             </div>
           </div>
           <div class="habit-actions">
