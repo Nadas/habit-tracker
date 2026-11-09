@@ -937,16 +937,54 @@
         </div>`;
 
       const wide = isWide();
-      const wrapStyle = wide
-        ? 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 20px;align-items:start;'
-        : 'display:flex;flex-direction:column;gap:12px;';
-      const notesBlock = wide ? notesRow.replace('<div>', '<div style="grid-column:1/-1;">') : notesRow;
-      return `<div style="${wrapStyle}">
+      if (!wide) {
+        return `<div style="display:flex;flex-direction:column;gap:12px;">
         ${renderSection('Morning', morningHabits)}
         ${renderSection('Evening', eveningHabits)}
         ${prayerRow}
         ${weeklyHabits.length  ? renderSection('Weekly',  weeklyHabits)  : ''}
         ${monthlyHabits.length ? renderSection('Monthly', monthlyHabits) : ''}
+        ${notesRow}
+      </div>`;
+      }
+
+      // Wide: bucket everything by time of day around the work hours.
+      const toMin = (t) => { const a = String(t).split(':'); return (+a[0]) * 60 + (+a[1] || 0); };
+      const bucketOf = (item) => {
+        const t = item.time || null;
+        if (t) {
+          const m = toMin(t);
+          return m < PLAN_WORK.start ? 'before' : m < PLAN_WORK.end ? 'during' : 'after';
+        }
+        return item.section === 'morning' ? 'before' : 'after';
+      };
+      const sortKey = (item, b) => item.time ? toMin(item.time) : (b === 'before' ? -1 : b === 'during' ? PLAN_WORK.start : 1441);
+      const cols = { before: [], during: [], after: [] };
+      [...morningHabits, ...eveningHabits].forEach((item, i) => {
+        const b = bucketOf(item);
+        cols[b].push({ item, k: sortKey(item, b), i });
+      });
+      const colHtml = (key, title, range) => {
+        const list = cols[key].sort((a, b) => a.k - b.k || a.i - b.i).map(x => x.item);
+        const body = list.length
+          ? list.map(item => item.__appointment ? renderAppointmentItem(item) : renderHabitItem(item)).join('')
+          : `<div style="padding:10px;color:#5f5c58;font-size:11px;border:1px dashed #2a2925;border-radius:4px;">Nothing here</div>`;
+        return `<div data-col="${key}">
+          <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;margin-bottom:6px;text-transform:uppercase;">${title} <span style="color:#5f5c58;font-weight:400;text-transform:none;letter-spacing:0;">${range}</span></p>
+          <div style="display:flex;flex-direction:column;gap:6px;">${body}</div>
+        </div>`;
+      };
+      const rest = [
+        prayerRow,
+        weeklyHabits.length  ? renderSection('Weekly',  weeklyHabits)  : '',
+        monthlyHabits.length ? renderSection('Monthly', monthlyHabits) : '',
+      ].filter(Boolean);
+      const notesBlock = notesRow.replace('<div>', '<div style="grid-column:1/-1;">');
+      return `<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px 16px;align-items:start;">
+        ${colHtml('before', 'Before work', '5 – 9 AM')}
+        ${colHtml('during', 'During work', '9 AM – 5 PM')}
+        ${colHtml('after',  'After work',  '5 – 9 PM')}
+        ${rest.join('')}
         ${notesBlock}
       </div>`;
     }
@@ -1687,7 +1725,7 @@
           </div>`;
       }
 
-      const contentMax = tab === 'plan' ? 'none' : !isWide() ? '480px' : tab === 'prayer' ? '560px' : tab === 'daily' ? '960px' : '1100px';
+      const contentMax = tab === 'plan' ? 'none' : !isWide() ? '480px' : tab === 'prayer' ? '560px' : tab === 'daily' ? '1200px' : '1100px';
 
       let content = '';
       if      (tab === 'daily')   content = renderDailyView();
