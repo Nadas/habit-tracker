@@ -228,6 +228,13 @@
       return h.frequency.charAt(0).toUpperCase() + h.frequency.slice(1);
     }
 
+    function fmtRange(h) {
+      const m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const f = (k) => { const [y, mo, d] = String(k).slice(0, 10).split('-').map(Number); return `${m[mo - 1]} ${d}${y !== new Date().getFullYear() ? ' ' + y : ''}`; };
+      if (h.start_date && h.end_date) return `${f(h.start_date)} – ${f(h.end_date)}`;
+      return h.start_date ? `From ${f(h.start_date)}` : `Until ${f(h.end_date)}`;
+    }
+
     function ordinal(n) {
       if (n % 10 === 1 && n !== 11) return 'st';
       if (n % 10 === 2 && n !== 12) return 'nd';
@@ -264,6 +271,7 @@
             <div class="habit-meta">
               <span class="badge freq-${h.frequency}">${getFreqLabel(h)}</span>
               <span class="badge">${h.type === 'yes/no' ? '✓/✕' : '##'}</span>
+              ${(h.start_date || h.end_date) ? `<span class="badge">${fmtRange(h)}</span>` : ''}
               ${h.time ? `<span class="badge" style="color:#d97757">↻ ${String(h.time).slice(0,5)}${h.duration_min ? ' · ' + h.duration_min + 'm' : ''}</span>` : ''}
             </div>
           </div>

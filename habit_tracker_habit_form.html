@@ -257,6 +257,21 @@
       </div>
     </div>
 
+    <!-- Start / end dates -->
+    <div class="form-section">
+      <div style="display:flex;gap:8px;">
+        <div style="flex:1;">
+          <label for="startDate">Starts</label>
+          <input type="date" id="startDate" />
+        </div>
+        <div style="flex:1;">
+          <label for="endDate">Ends (optional)</label>
+          <input type="date" id="endDate" />
+        </div>
+      </div>
+      <p class="note">The habit only shows on days between these dates. Clear the start date to show it on all past days.</p>
+    </div>
+
     <div class="button-group">
       <button class="secondary" onclick="goBack()">Cancel</button>
       <button class="primary" id="submitBtn" onclick="submitForm()">Add Habit</button>
@@ -347,6 +362,9 @@
         document.getElementById('submitBtn').textContent = 'Save Changes';
         await loadHabit();
       } else {
+        const t = new Date();
+        document.getElementById('startDate').value =
+          `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
         updateConditionalSections('daily');
         updateMonthlyPreview();
       }
@@ -399,6 +417,8 @@
         // Legacy day-of-month: just leave defaults, user can update
       }
 
+      if (h.start_date) document.getElementById('startDate').value = String(h.start_date).slice(0, 10);
+      if (h.end_date)   document.getElementById('endDate').value   = String(h.end_date).slice(0, 10);
       if (h.time) document.getElementById('habitTime').value = String(h.time).slice(0,5);
       if (h.duration_min) {
         const dSel = document.getElementById('habitDuration');
@@ -429,6 +449,11 @@
       if (frequency === 'weekly' && selectedDays.size === 0) {
         showError('Please select at least one day.'); return;
       }
+      const startVal = document.getElementById('startDate').value;
+      const endVal   = document.getElementById('endDate').value;
+      if (startVal && endVal && endVal < startVal) {
+        showError('The end date must be on or after the start date.'); return;
+      }
 
       const btn = document.getElementById('submitBtn');
       btn.disabled = true;
@@ -450,6 +475,9 @@
         archived: false,
       };
 
+      payload.start_date = startVal || null;
+      payload.end_date   = endVal || null;
+
       const timeOk = type === 'yes/no' && frequency !== 'quarterly';
       const timeVal = document.getElementById('habitTime').value;
       payload.time = timeOk && timeVal ? timeVal : null;
@@ -457,13 +485,14 @@
 
       let error;
       const timeCols = { time: payload.time, duration_min: payload.duration_min };
+      const dateCols = { start_date: payload.start_date, end_date: payload.end_date };
 
       if (mode === 'edit') {
         ({ error } = await db.from('habits').update(payload).eq('id', habitId));
-        if (error && /time|duration_min/i.test(error.message || '')) {
-          delete payload.time; delete payload.duration_min;
+        if (error && /time|duration_min|start_date|end_date/i.test(error.message || '')) {
+          delete payload.time; delete payload.duration_min; delete payload.start_date; delete payload.end_date;
           ({ error } = await db.from('habits').update(payload).eq('id', habitId));
-          if (!error && timeCols.time) alert('Saved, but the time was not stored. Run plan_migration.sql in Supabase first.');
+          if (!error && (timeCols.time || dateCols.start_date || dateCols.end_date)) alert('Saved, but the time or dates were not stored. Run plan_migration.sql in Supabase first.');
         }
       } else {
         const { data: existing } = await db.from('habits')
@@ -476,10 +505,10 @@
         payload.sort_order = nextOrder;
 
         ({ error } = await db.from('habits').insert(payload));
-        if (error && /time|duration_min/i.test(error.message || '')) {
-          delete payload.time; delete payload.duration_min;
+        if (error && /time|duration_min|start_date|end_date/i.test(error.message || '')) {
+          delete payload.time; delete payload.duration_min; delete payload.start_date; delete payload.end_date;
           ({ error } = await db.from('habits').insert(payload));
-          if (!error && timeCols.time) alert('Saved, but the time was not stored. Run plan_migration.sql in Supabase first.');
+          if (!error && (timeCols.time || dateCols.start_date || dateCols.end_date)) alert('Saved, but the time or dates were not stored. Run plan_migration.sql in Supabase first.');
         }
       }
 

@@ -147,6 +147,15 @@
       return firstDayNum + (nth - 1) * 7;
     }
 
+    // A habit with a start date doesn't exist before it; one with an end date
+    // stops after it (end date is inclusive). No dates means always active.
+    function habitActiveOn(h, date) {
+      const k = dateKey(date);
+      if (h.start_date && k < String(h.start_date).slice(0, 10)) return false;
+      if (h.end_date   && k > String(h.end_date).slice(0, 10))   return false;
+      return true;
+    }
+
     function isMonthlyHabitDueToday(habit, date) {
       if (habit.days && habit.days.length === 2) {
         // New format: [nth, weekday]
@@ -700,6 +709,13 @@
         return `<div style="width:10px;height:10px;border-radius:2px;background:${bg};opacity:${op};margin:0 auto;"></div>`;
       }
 
+      if (dateObj && !habitActiveOn(h, dateObj)) {
+        const logged = (state.completionsByDate[k] || {})[h.id];
+        if (!(logged === true || logged === 'true')) {
+          return `<div style="width:10px;height:10px;margin:0 auto;"></div>`;
+        }
+      }
+
       // Weekly habits: on a day the habit isn't normally scheduled, leave
       // the cell blank UNLESS a completion actually exists for that day —
       // e.g. logged off-schedule via a habit-linked appointment. A real
@@ -863,24 +879,24 @@
 
       const morningHabits = [
         ...state.habits.filter(h =>
-          h.frequency === 'daily' && h.section === 'morning' && h.id !== state.prayerHabitId
+          h.frequency === 'daily' && h.section === 'morning' && h.id !== state.prayerHabitId && habitActiveOn(h, state.selectedDate)
         ),
         ...morningAppts,
       ];
       const eveningHabits = [
         ...eveningAppts,
         ...state.habits.filter(h =>
-          h.frequency === 'daily' && h.section === 'evening' && h.id !== state.prayerHabitId
+          h.frequency === 'daily' && h.section === 'evening' && h.id !== state.prayerHabitId && habitActiveOn(h, state.selectedDate)
         ),
         ...state.habits.filter(h =>
-          h.frequency === 'weekly' && h.days && h.days.includes(dow) && h.section === 'evening'
+          h.frequency === 'weekly' && h.days && h.days.includes(dow) && h.section === 'evening' && habitActiveOn(h, state.selectedDate)
         ),
       ];
       const weeklyHabits = state.habits.filter(h =>
-        h.frequency === 'weekly' && h.days && h.days.includes(dow) && !h.section
+        h.frequency === 'weekly' && h.days && h.days.includes(dow) && !h.section && habitActiveOn(h, state.selectedDate)
       );
       const monthlyHabits = state.habits.filter(h =>
-        h.frequency === 'monthly' && isMonthlyHabitDueToday(h, state.selectedDate)
+        h.frequency === 'monthly' && isMonthlyHabitDueToday(h, state.selectedDate) && habitActiveOn(h, state.selectedDate)
       );
 
       const prayers        = getPrayers(state.selectedDate);
@@ -1088,6 +1104,10 @@
         habits.forEach(h => {
           const key  = `${h.id}_${monthKey}`;
           const done = !!state.yearCompletions[key];
+          const mFirst = `${year}-${monthKey}-01`;
+          const mLast  = `${year}-${monthKey}-${String(new Date(year, m + 1, 0).getDate()).padStart(2, '0')}`;
+          const outside = (h.start_date && String(h.start_date).slice(0, 10) > mLast) || (h.end_date && String(h.end_date).slice(0, 10) < mFirst);
+          if (outside && !done) { html += `<td style="padding:3px 2px;"><div style="width:10px;height:10px;margin:0 auto;"></div></td>`; return; }
           html += `<td style="padding:3px 2px;text-align:center;">
             <div style="width:10px;height:10px;border-radius:2px;background:${done?'#d97757':'#2a2925'};opacity:${done?1:0.4};margin:0 auto;"></div>
           </td>`;
@@ -1275,7 +1295,7 @@
       const comp = state.completionsByDate[k] || {};
       return state.habits
         .filter(h =>
-          h.time && !h.archived && h.type !== 'number' && h.id !== state.prayerHabitId && (
+          h.time && !h.archived && h.type !== 'number' && h.id !== state.prayerHabitId && habitActiveOn(h, d) && (
             h.frequency === 'daily' ||
             (h.frequency === 'weekly'  && h.days && h.days.includes(dow)) ||
             (h.frequency === 'monthly' && isMonthlyHabitDueToday(h, d))
