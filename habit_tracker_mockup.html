@@ -78,6 +78,7 @@
       allAppointments: null,
       quickAddOpen: false,
       quickAddDefaults: null,
+      planHabitSheet: null,    // { id } while the habit time sheet is open
       planScroll: null,        // null = scroll to "now" on next render
       planLastTouch: Date.now(),
     };
@@ -620,7 +621,10 @@
         await Promise.all([loadCompletionsForDate(date), loadNoteForDate(date), loadAppointmentsForDate(date)]);
       } else if (tab === 'plan') {
         const days = planDays();
-        await loadAppointmentsForRange(days[0], days[6]);
+        await Promise.all([
+          loadAppointmentsForRange(days[0], days[6]),
+          loadCompletionsForRange(days[0], days[6]),
+        ]);
       } else if (tab === 'appointments') {
         await loadAllAppointments();
       } else if (tab === 'weekly') {
@@ -1245,12 +1249,32 @@
       return pos;
     }
 
+    // Repeating habits that have a time, as calendar items for one day. Number
+    // habits (values, not ticks) and the Prayers habit are left off.
+    function planHabitsFor(d) {
+      const k    = dateKey(d);
+      const dow  = d.getDay();
+      const comp = state.completionsByDate[k] || {};
+      return state.habits
+        .filter(h =>
+          h.time && !h.archived && h.type !== 'number' && h.id !== state.prayerHabitId && (
+            h.frequency === 'daily' ||
+            (h.frequency === 'weekly'  && h.days && h.days.includes(dow)) ||
+            (h.frequency === 'monthly' && isMonthlyHabitDueToday(h, d))
+          ))
+        .map(h => ({
+          id: 'habit:' + h.id, __habit: h.id, title: h.name,
+          time: h.time, duration_min: h.duration_min || 30,
+          completed: comp[h.id] === true || comp[h.id] === 'true',
+        }));
+    }
+
     function renderPlanColumn(d, todayKey, week) {
       const k    = dateKey(d);
       const isT  = k === todayKey;
       const wk   = d.getDay() >= 5;
       const H    = 24 * 60 * PLAN_PX;
-      const list = (state.appointmentsByDate[k] || []).filter(a => planApptStart(a) !== null);
+      const list = (state.appointmentsByDate[k] || []).filter(a => planApptStart(a) !== null).concat(planHabitsFor(d));
       const lay  = planLayout(list);
 
       let lines = '';
@@ -1260,20 +1284,26 @@
       }
 
       const blocks = list.map(a => {
-        const s    = planApptStart(a), dur = planApptDur(a);
-        const p    = lay[a.id] || { c: 0, n: 1 }, w = 100 / p.n;
-        const done = !!a.completed;
-        const top  = s * PLAN_PX, ht = Math.max(dur * PLAN_PX, 22);
+        const s     = planApptStart(a), dur = planApptDur(a);
+        const p     = lay[a.id] || { c: 0, n: 1 }, w = 100 / p.n;
+        const done  = !!a.completed;
+        const isH   = !!a.__habit;
+        const top   = s * PLAN_PX, ht = Math.max(dur * PLAN_PX, 22);
         const short = dur <= 30;
+        const open   = isH ? `planHabitClick('${a.__habit}','${k}')`  : `planBlockClick('${a.id}','${k}')`;
+        const toggle = isH ? `planHabitToggle('${a.__habit}','${k}')` : `planToggle('${a.id}','${k}')`;
+        const fill   = done ? '#141411' : isH ? 'rgba(245,241,237,0.06)' : 'rgba(217,119,87,0.18)';
+        const edge   = done ? '#2a2925' : isH ? '#444441' : '#d97757';
+        const bar    = done ? '#444441' : isH ? '#8a8985' : '#d97757';
         return `
-          <div onclick="event.stopPropagation();planBlockClick('${a.id}','${k}')"
+          <div onclick="event.stopPropagation();${open}"
             style="position:absolute;top:${top}px;height:${ht}px;left:calc(${p.c * w}% + 2px);width:calc(${w}% - 4px);box-sizing:border-box;
-              background:${done ? '#141411' : 'rgba(217,119,87,0.18)'};border:1px solid ${done ? '#2a2925' : '#d97757'};border-left:3px solid ${done ? '#444441' : '#d97757'};
+              background:${fill};border:1px solid ${edge};border-left:3px solid ${bar};
               border-radius:3px;padding:2px 4px;overflow:hidden;cursor:pointer;z-index:2;display:flex;gap:5px;align-items:${short ? 'center' : 'flex-start'};">
-            <button onclick="event.stopPropagation();planToggle('${a.id}','${k}')" aria-label="Mark done"
+            <button onclick="event.stopPropagation();${toggle}" aria-label="Mark done"
               style="flex:none;width:18px;height:18px;border-radius:3px;border:1px solid ${done ? '#d97757' : '#8a8985'};background:${done ? '#d97757' : 'transparent'};color:#0a0a0a;font-size:11px;line-height:1;font-weight:600;cursor:pointer;padding:0;">${done ? '✓' : ''}</button>
             <div style="min-width:0;font-size:11px;line-height:1.25;color:${done ? '#7a7570' : '#f5f1ed'};${done ? 'text-decoration:line-through;' : ''}">
-              <div style="${short ? 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;' : 'overflow-wrap:anywhere;'}">${escapeHtml(a.title)}</div>
+              <div style="${short ? 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;' : 'overflow-wrap:anywhere;'}">${isH ? '<span style="color:#8a8985;">↻</span> ' : ''}${escapeHtml(a.title)}</div>
               ${!short ? `<div style="font-size:9px;color:#8a8985;text-decoration:none;">${formatApptTime(a.time)}</div>` : ''}
             </div>
           </div>`;
@@ -1377,6 +1407,80 @@
       state.allAppointments = null;
     }
 
+    // Habit blocks: tick for that day (same completions as the Today tab).
+    // Future days can't be ticked ahead of time.
+    function planHabitToggle(habitId, k) {
+      const [y, m, d] = k.split('-').map(Number);
+      if (isFutureDate(new Date(y, m - 1, d))) return;
+      const cur  = (state.completionsByDate[k] || {})[habitId];
+      const next = !(cur === true || cur === 'true');
+      if (!state.completionsByDate[k]) state.completionsByDate[k] = {};
+      state.completionsByDate[k][habitId] = next;
+      render();
+      upsertCompletion(habitId, k, next);
+    }
+
+    function planHabitClick(habitId) {
+      state.planHabitSheet = { id: habitId };
+      render();
+    }
+
+    function closePlanHabitSheet() {
+      state.planHabitSheet = null;
+      render();
+    }
+
+    async function writeHabitTime(time, duration) {
+      const sheet = state.planHabitSheet;
+      const h = sheet && state.habits.find(x => x.id === sheet.id);
+      if (!h) return;
+      const patch = { time: time || null, duration_min: time ? duration : null };
+      const { error } = await db.from('habits').update(patch).eq('id', h.id);
+      if (error) { alert('Could not save: ' + error.message + '. Run the habit time migration first.'); return; }
+      h.time = patch.time; h.duration_min = patch.duration_min;
+      state.planHabitSheet = null;
+      render();
+    }
+
+    function savePlanHabit(formEl) {
+      return writeHabitTime(formEl.time.value.trim(), parseInt(formEl.duration.value, 10) || 30);
+    }
+
+    function removePlanHabitTime() {
+      return writeHabitTime(null, null);
+    }
+
+    function renderPlanHabitSheet() {
+      const sheet = state.planHabitSheet;
+      const h = sheet && state.habits.find(x => x.id === sheet.id);
+      if (!h) return '';
+      const inputStyle = 'width:100%;background:#0a0a0a;border:1px solid #2a2925;color:#f5f1ed;border-radius:4px;padding:9px 10px;font-size:12px;font-family:inherit;outline:none;';
+      const repeats = h.frequency === 'weekly' && h.days
+        ? 'Repeats ' + h.days.map(d => dayNames[d].slice(0, 3)).join(', ')
+        : 'Repeats ' + h.frequency;
+      return `
+        <div onclick="closePlanHabitSheet()"
+          style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,0.6);display:flex;align-items:flex-end;justify-content:center;">
+          <div onclick="event.stopPropagation()"
+            style="background:#141411;border:1px solid #2a2925;border-top-left-radius:10px;border-top-right-radius:10px;padding:16px;width:100%;max-width:480px;">
+            <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:4px;">Habit time</p>
+            <p style="color:#f5f1ed;font-size:13px;margin-bottom:2px;">${escapeHtml(h.name)}</p>
+            <p style="color:#7a7570;font-size:10px;margin-bottom:12px;">${escapeHtml(repeats)}. Shows on the Plan calendar on those days.</p>
+            <form onsubmit="event.preventDefault();savePlanHabit(this);" style="display:flex;flex-direction:column;gap:8px;">
+              <div style="display:flex;gap:8px;">
+                <input name="time" type="time" required value="${h.time || ''}" style="${inputStyle};flex:1;">
+                ${planDurationSelect(h.duration_min || 30, inputStyle + 'flex:1;')}
+              </div>
+              <div style="display:flex;gap:8px;">
+                <button type="submit" style="flex:1;background:#d97757;border:none;color:#0a0a0a;border-radius:4px;padding:9px;font-size:12px;font-weight:600;cursor:pointer;">Save</button>
+                <button type="button" onclick="closePlanHabitSheet()" style="flex:1;background:none;border:1px solid #2a2925;color:#8a8985;border-radius:4px;padding:9px;font-size:12px;cursor:pointer;">Cancel</button>
+              </div>
+              <button type="button" onclick="removePlanHabitTime()" style="background:none;border:none;color:#7a7570;font-size:10px;cursor:pointer;padding:6px 0;text-align:center;">Remove from calendar</button>
+            </form>
+          </div>
+        </div>`;
+    }
+
     async function planToday() {
       state.selectedDate = new Date();
       state.planScroll = null;
@@ -1395,14 +1499,14 @@
       const refit = () => {
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(() => {
-          if (state.activeTab === 'plan' && !state.quickAddOpen && !state.appointmentFormOpen) render();
+          if (state.activeTab === 'plan' && !state.quickAddOpen && !state.appointmentFormOpen && !state.planHabitSheet) render();
         }, 150);
       };
       window.addEventListener('resize', refit);
       window.addEventListener('orientationchange', refit);
       let lastDay = dateKey(new Date());
       setInterval(async () => {
-        if (state.activeTab !== 'plan' || state.quickAddOpen || state.appointmentFormOpen || state.calendarOpen) return;
+        if (state.activeTab !== 'plan' || state.quickAddOpen || state.appointmentFormOpen || state.calendarOpen || state.planHabitSheet) return;
         try {
           const nowKey = dateKey(new Date());
           if (nowKey !== lastDay) {
@@ -1574,6 +1678,7 @@
         ${renderCalendarOverlay()}
         ${renderQuickAddModal()}
         ${renderAppointmentEditModal()}
+        ${renderPlanHabitSheet()}
         <div class="container">
           ${headerHtml}
           <div style="padding:12px 14px;max-width:${contentMax};margin:0 auto;">
