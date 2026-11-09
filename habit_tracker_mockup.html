@@ -1198,7 +1198,8 @@
     // appointments.duration_min (60 when empty). Appointments with no time
     // appear in an "any time" strip above the grid.
 
-    const PLAN_PX  = 1.2;                                  // pixels per minute
+    const PLAN_PX  = 1.2;
+    const PLAN_WORK = { start: 9 * 60, end: 17 * 60 };   // work hours; Fri/Sat are shaded all day                                  // pixels per minute
     const PLAN_DUR = [15, 30, 45, 60, 90, 120, 180, 240];
 
     function planDurationLabel(d) {
@@ -1335,8 +1336,12 @@
       }
 
       const bg = isT ? 'rgba(217,119,87,0.05)' : wk ? '#0e0e0c' : 'transparent';
+      const offBg = 'rgba(245,241,237,0.02)';
+      const off = wk ? '' :
+        `<div data-off="before" style="position:absolute;left:0;right:0;top:0;height:${PLAN_WORK.start * PLAN_PX}px;background:${offBg};pointer-events:none;"></div>` +
+        `<div data-off="after" style="position:absolute;left:0;right:0;top:${PLAN_WORK.end * PLAN_PX}px;bottom:0;background:${offBg};pointer-events:none;"></div>`;
       return `<div data-day="${k}" onclick="planGridClick(event,'${k}')"
-        style="position:relative;height:${H}px;border-left:1px solid #2a2925;cursor:cell;background:${bg};">${lines}${blocks}${now}</div>`;
+        style="position:relative;height:${H}px;border-left:1px solid #2a2925;cursor:cell;background:${bg};">${off}${lines}${blocks}${now}</div>`;
     }
 
     function renderPlanView() {
