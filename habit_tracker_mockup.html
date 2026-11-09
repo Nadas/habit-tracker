@@ -149,6 +149,17 @@
 
     // A habit with a start date doesn't exist before it; one with an end date
     // stops after it (end date is inclusive). No dates means always active.
+    function isWide() { return window.innerWidth >= 700; }
+
+    // Week / Month / Year tables: fill the width and use bigger cells on wide screens.
+    function wideTable(html) {
+      if (!isWide()) return html;
+      return html
+        .split('width:auto;border-collapse').join('width:100%;border-collapse')
+        .split('width:10px;height:10px').join('width:14px;height:14px')
+        .split('padding:3px 2px').join('padding:5px 2px');
+    }
+
     function habitActiveOn(h, date) {
       const k = dateKey(date);
       if (h.start_date && k < String(h.start_date).slice(0, 10)) return false;
@@ -925,13 +936,18 @@
           >${escapeHtml(savedNote)}</textarea>
         </div>`;
 
-      return `<div style="display:flex;flex-direction:column;gap:12px;">
+      const wide = isWide();
+      const wrapStyle = wide
+        ? 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 20px;align-items:start;'
+        : 'display:flex;flex-direction:column;gap:12px;';
+      const notesBlock = wide ? notesRow.replace('<div>', '<div style="grid-column:1/-1;">') : notesRow;
+      return `<div style="${wrapStyle}">
         ${renderSection('Morning', morningHabits)}
         ${renderSection('Evening', eveningHabits)}
         ${prayerRow}
         ${weeklyHabits.length  ? renderSection('Weekly',  weeklyHabits)  : ''}
         ${monthlyHabits.length ? renderSection('Monthly', monthlyHabits) : ''}
-        ${notesRow}
+        ${notesBlock}
       </div>`;
     }
 
@@ -1026,7 +1042,7 @@
       }
 
       html += `</tbody></table></div></div>`;
-      return html;
+      return wideTable(html);
     }
 
     function renderMonthlyView() {
@@ -1069,7 +1085,7 @@
       }
 
       html += `</tbody></table></div></div>`;
-      return html;
+      return wideTable(html);
     }
 
     function renderYearView() {
@@ -1117,7 +1133,7 @@
       }
 
       html += `</tbody></table></div></div>`;
-      return html;
+      return wideTable(html);
     }
 
     function renderNotesView() {
@@ -1135,7 +1151,11 @@
           </div>`;
       }).join('');
 
-      return `<div>${entries}</div>`;
+      return isWide() ? `<div style="column-count:2;column-gap:12px;">${entries.split('margin-bottom:8px;').join('margin-bottom:12px;break-inside:avoid;')}</div>` : `<div>${entries}</div>`;
+    }
+
+    function cardGrid(inner) {
+      return isWide() ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));column-gap:12px;">${inner}</div>` : inner;
     }
 
     function renderAppointmentsTabView() {
@@ -1161,10 +1181,10 @@
       }
 
       const upcomingHtml = upcoming.length
-        ? `<p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:8px;">Upcoming</p>${upcoming.map(entry).join('')}`
+        ? `<p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:8px;">Upcoming</p>${cardGrid(upcoming.map(entry).join(''))}`
         : '';
       const pastHtml = past.length
-        ? `<p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin:${upcoming.length?'16px':'0'} 0 8px;">Past</p>${past.map(entry).join('')}`
+        ? `<p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin:${upcoming.length?'16px':'0'} 0 8px;">Past</p>${cardGrid(past.map(entry).join(''))}`
         : '';
 
       return `<div>${upcomingHtml}${pastHtml}</div>`;
@@ -1667,7 +1687,7 @@
           </div>`;
       }
 
-      const contentMax = tab === 'plan' ? 'none' : '480px';
+      const contentMax = tab === 'plan' ? 'none' : !isWide() ? '480px' : tab === 'prayer' ? '560px' : tab === 'daily' ? '960px' : '1100px';
 
       let content = '';
       if      (tab === 'daily')   content = renderDailyView();
