@@ -77,6 +77,8 @@
       editingAppointmentId: null,
       allAppointments: null,
       quickAddOpen: false,
+      bulkOpen: false,
+      bulkDefaults: null,
       quickAddDefaults: null,
       planHabitSheet: null,    // { id } while the habit time sheet is open
       planScroll: null,        // null = scroll to "now" on next render
@@ -502,6 +504,57 @@
     function toggleQuickAdd() {
       state.quickAddOpen = !state.quickAddOpen;
       state.quickAddDefaults = null;
+      render();
+    }
+
+    function openBulkAdd(dateStr) {
+      state.bulkDefaults = { date: dateStr || dateKey(state.selectedDate) };
+      state.quickAddOpen = false;
+      state.bulkOpen = true;
+      render();
+      const ta = document.querySelector('textarea[name="lines"]');
+      if (ta) ta.focus();
+    }
+
+    function closeBulkAdd() {
+      state.bulkOpen = false;
+      state.bulkDefaults = null;
+      render();
+    }
+
+    // Each non-empty line becomes an appointment with no time. Leading bullets,
+    // dashes, checkboxes and "1." numbering are stripped so a pasted list works.
+    function parseBulkLines(text) {
+      return String(text || '').split(/\r?\n/)
+        .map(l => l.replace(/^\s*(?:[-*\u2022]\s*(?:\[[ xX]?\]\s*)?|\d+[.)]\s+|\[[ xX]?\]\s*)/, '').trim())
+        .filter(Boolean);
+    }
+
+    async function saveBulkAppointments(formEl) {
+      const titles  = parseBulkLines(formEl.lines.value);
+      const dateStr = formEl.date.value;
+      const isWork  = !!formEl.is_work.checked;
+      if (!titles.length || !dateStr) return;
+
+      const rows = titles.map(title => {
+        const r = { user_id: currentUser.id, date: dateStr, title, time: null, notes: null, section: deriveSection(null), habit_id: null };
+        if (isWork) r.is_work = true;
+        return r;
+      });
+      let { error } = await db.from('appointments').insert(rows);
+      if (error && isWork) {
+        const plain = rows.map(({ is_work, ...rest }) => rest);
+        ({ error } = await db.from('appointments').insert(plain));
+        if (!error) alert('Saved, but the Work tag was not stored. Run plan_migration.sql in Supabase first.');
+      }
+      if (error) { alert('Could not save: ' + error.message); return; }
+
+      state.appointmentsByDate[dateStr] = undefined;
+      state.allAppointments = null;
+      state.bulkOpen = false;
+      state.bulkDefaults = null;
+      render();
+      await loadTabData();
       render();
     }
 
@@ -956,6 +1009,7 @@
           const m = toMin(t);
           return m < PLAN_WORK.start ? 'before' : m < PLAN_WORK.end ? 'during' : 'after';
         }
+        if (item.is_work) return 'during';
         return item.section === 'morning' ? 'before' : 'after';
       };
       const sortKey = (item, b) => item.time ? toMin(item.time) : (b === 'before' ? -1 : b === 'during' ? PLAN_WORK.start : 1441);
@@ -1231,6 +1285,34 @@
       return `<div>${upcomingHtml}${pastHtml}</div>`;
     }
 
+    function renderBulkModal() {
+      if (!state.bulkOpen) return '';
+      const inputStyle = 'width:100%;background:#0a0a0a;border:1px solid #2a2925;color:#f5f1ed;border-radius:4px;padding:9px 10px;font-size:12px;font-family:inherit;outline:none;';
+      const dateStr = (state.bulkDefaults && state.bulkDefaults.date) || dateKey(state.selectedDate);
+      return `
+        <div onclick="closeBulkAdd()"
+          style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,0.6);display:flex;align-items:flex-end;justify-content:center;">
+          <div onclick="event.stopPropagation()"
+            style="background:#141411;border:1px solid #2a2925;border-top-left-radius:10px;border-top-right-radius:10px;padding:16px;width:100%;max-width:480px;">
+            <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:12px;">Add several</p>
+            <form onsubmit="event.preventDefault();saveBulkAppointments(this);" style="display:flex;flex-direction:column;gap:8px;">
+              <textarea name="lines" required placeholder="One item per line" style="${inputStyle};resize:none;min-height:140px;line-height:1.6;"></textarea>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <input name="date" type="date" required value="${dateStr}" style="${inputStyle};flex:1;">
+                <label style="flex:none;display:flex;align-items:center;gap:6px;font-size:12px;color:#5b9bd5;cursor:pointer;white-space:nowrap;">
+                  <input type="checkbox" name="is_work" style="width:16px;height:16px;accent-color:#5b9bd5;margin:0;"> Work
+                </label>
+              </div>
+              <p style="color:#7a7570;font-size:9px;">No time is set, so each item shows in the any-time row on Plan. Pasted bullets and numbers are removed.</p>
+              <div style="display:flex;gap:8px;margin-top:4px;">
+                <button type="submit" style="flex:1;background:#d97757;border:none;color:#0a0a0a;border-radius:4px;padding:10px;font-size:12px;font-weight:600;cursor:pointer;">Add all</button>
+                <button type="button" onclick="closeBulkAdd()" style="flex:1;background:none;border:1px solid #2a2925;color:#8a8985;border-radius:4px;padding:10px;font-size:12px;cursor:pointer;">Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>`;
+    }
+
     function renderQuickAddModal() {
       if (!state.quickAddOpen) return '';
 
@@ -1246,7 +1328,10 @@
           style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,0.6);display:flex;align-items:flex-end;justify-content:center;">
           <div onclick="event.stopPropagation()"
             style="background:#141411;border:1px solid #2a2925;border-top-left-radius:10px;border-top-right-radius:10px;padding:16px;width:100%;max-width:480px;">
-            <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:12px;">New Appointment</p>
+            <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;">
+              <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;">New Appointment</p>
+              <button type="button" onclick="openBulkAdd(document.querySelector('form input[name=date]').value)" style="background:none;border:none;color:#d97757;font-size:11px;cursor:pointer;padding:0;font-family:inherit;">Add several</button>
+            </div>
             <form onsubmit="event.preventDefault();saveQuickAppointment(this);" style="display:flex;flex-direction:column;gap:8px;">
               <input name="title" placeholder="Title" required style="${inputStyle}">
               <div style="display:flex;gap:8px;">
@@ -1603,14 +1688,14 @@
       const refit = () => {
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(() => {
-          if (state.activeTab === 'plan' && !state.quickAddOpen && !state.appointmentFormOpen && !state.planHabitSheet) render();
+          if (state.activeTab === 'plan' && !state.quickAddOpen && !state.appointmentFormOpen && !state.planHabitSheet && !state.bulkOpen) render();
         }, 150);
       };
       window.addEventListener('resize', refit);
       window.addEventListener('orientationchange', refit);
       let lastDay = dateKey(new Date());
       setInterval(async () => {
-        if (state.activeTab !== 'plan' || state.quickAddOpen || state.appointmentFormOpen || state.calendarOpen || state.planHabitSheet) return;
+        if (state.activeTab !== 'plan' || state.quickAddOpen || state.appointmentFormOpen || state.calendarOpen || state.planHabitSheet || state.bulkOpen) return;
         try {
           const nowKey = dateKey(new Date());
           if (nowKey !== lastDay) {
@@ -1777,6 +1862,7 @@
       document.getElementById('root').innerHTML = `
         ${renderCalendarOverlay()}
         ${renderQuickAddModal()}
+        ${renderBulkModal()}
         ${renderAppointmentEditModal()}
         ${renderPlanHabitSheet()}
         <div class="container">
