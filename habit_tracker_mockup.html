@@ -77,6 +77,10 @@
       editingAppointmentId: null,
       allAppointments: null,
       quickAddOpen: false,
+      quickAddDefaults: null,
+      planView: (() => { try { return localStorage.getItem('planView') === 'week' ? 'week' : 'day'; } catch (e) { return 'day'; } })(),
+      planScroll: null,        // null = scroll to "now" on next render
+      planLastTouch: Date.now(),
     };
 
     const dayNames   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -221,6 +225,27 @@
       state.appointmentsByDate[key] = data || [];
     }
 
+    // Always re-reads the range so the Plan week view (and an iPad left open
+    // on it) never shows stale data.
+    async function loadAppointmentsForRange(startDate, endDate) {
+      const { data } = await db.from('appointments')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .gte('date', dateKey(startDate))
+        .lte('date', dateKey(endDate))
+        .order('time', { ascending: true, nullsFirst: false });
+
+      const byDate = {};
+      (data || []).forEach(a => { (byDate[a.date] = byDate[a.date] || []).push(a); });
+
+      const d = new Date(startDate);
+      while (d <= endDate) {
+        const k = dateKey(d);
+        state.appointmentsByDate[k] = byDate[k] || [];
+        d.setDate(d.getDate() + 1);
+      }
+    }
+
     async function loadCompletionsForRange(startDate, endDate) {
       const startKey = dateKey(startDate);
       const endKey   = dateKey(endDate);
@@ -356,6 +381,24 @@
 
     // ─── Appointments ─────────────────────────────────────────────────────────────
 
+    // The Plan tab stores a block's length in appointments.duration_min. If the
+    // column has not been added yet, fall back to saving without it so nothing
+    // is lost, and say so in the console.
+    async function writeAppointment(payload, editingId) {
+      const run = (p) => editingId
+        ? db.from('appointments').update(p).eq('id', editingId)
+        : db.from('appointments').insert(p);
+
+      let { error } = await run(payload);
+      if (error && 'duration_min' in payload) {
+        const { duration_min, ...rest } = payload;
+        ({ error } = await run(rest));
+        if (!error) console.warn('appointments.duration_min is missing, so the length was not saved. Run the migration.');
+      }
+      if (error) { alert('Could not save: ' + error.message); return false; }
+      return true;
+    }
+
     function openAppointmentForm(id) {
       state.appointmentFormOpen = true;
       state.editingAppointmentId = id || null;
@@ -369,37 +412,42 @@
     }
 
     async function saveAppointment(formEl) {
-      const key = dateKey(state.selectedDate);
+      const key      = dateKey(state.selectedDate);
       const title    = formEl.title.value.trim();
+      const newDate  = (formEl.date && formEl.date.value) || key;
       const time     = formEl.time.value.trim();
       const notes    = formEl.notes.value.trim();
+      const duration = parseInt(formEl.duration.value, 10) || 60;
       const section  = deriveSection(time);
       const habitId  = formEl.habit_id.value || null;
       if (!title) return;
 
       const editingId = state.editingAppointmentId;
       const payload = {
-        user_id: currentUser.id, date: key,
+        user_id: currentUser.id, date: newDate,
         title, time: time || null, notes: notes || null,
-        section, habit_id: habitId,
+        section, habit_id: habitId, duration_min: duration,
       };
 
-      if (editingId) {
-        await db.from('appointments').update(payload).eq('id', editingId);
-      } else {
-        await db.from('appointments').insert(payload);
-      }
+      const ok = await writeAppointment(payload, editingId);
+      if (!ok) return;
 
       // Off-schedule habit logging: linking an appointment to a habit
       // also marks that habit complete for the appointment's date.
       if (habitId) {
-        await setHabit(habitId, true);
+        if (newDate === key) {
+          await setHabit(habitId, true);
+        } else {
+          await upsertCompletion(habitId, newDate, true);
+          if (state.completionsByDate[newDate]) state.completionsByDate[newDate][habitId] = true;
+        }
       }
 
-      state.appointmentsByDate[key] = undefined; // invalidate cache
-      state.allAppointments = null; // invalidate global list cache
+      state.appointmentsByDate[key] = undefined;     // invalidate caches
+      state.appointmentsByDate[newDate] = undefined;
+      state.allAppointments = null;
       closeAppointmentForm();
-      await loadAppointmentsForDate(state.selectedDate);
+      await loadTabData();
       render();
     }
 
@@ -426,11 +474,13 @@
 
     function toggleQuickAdd() {
       state.quickAddOpen = !state.quickAddOpen;
+      state.quickAddDefaults = null;
       render();
     }
 
     function closeQuickAdd() {
       state.quickAddOpen = false;
+      state.quickAddDefaults = null;
       render();
     }
 
@@ -439,15 +489,17 @@
       const dateStr  = formEl.date.value; // already YYYY-MM-DD from <input type="date">
       const time     = formEl.time.value.trim();
       const notes    = formEl.notes.value.trim();
+      const duration = parseInt(formEl.duration.value, 10) || 60;
       const section  = deriveSection(time);
       const habitId  = formEl.habit_id.value || null;
       if (!title || !dateStr) return;
 
-      await db.from('appointments').insert({
+      const ok = await writeAppointment({
         user_id: currentUser.id, date: dateStr,
         title, time: time || null, notes: notes || null,
-        section, habit_id: habitId,
-      });
+        section, habit_id: habitId, duration_min: duration,
+      }, null);
+      if (!ok) return;
 
       if (habitId) {
         await upsertCompletion(habitId, dateStr, true);
@@ -459,14 +511,12 @@
       state.allAppointments = null;
 
       state.quickAddOpen = false;
+      state.quickAddDefaults = null;
       render();
 
-      // If the quick-added appointment was for the day currently being
-      // viewed, refresh it so it shows up immediately.
-      if (dateStr === dateKey(state.selectedDate)) {
-        await loadAppointmentsForDate(state.selectedDate);
-        render();
-      }
+      // Refresh whatever the current tab shows (Today, Plan day/week, Appts).
+      await loadTabData();
+      render();
     }
 
     function goToAppointmentDate(dateStr) {
@@ -483,6 +533,7 @@
 
     async function setActiveTab(tab) {
       state.activeTab = tab;
+      if (tab === 'plan') state.planScroll = null;
       state.calendarOpen = false;
       await loadTabData();
       render();
@@ -568,6 +619,10 @@
 
       if (tab === 'daily' || tab === 'prayer') {
         await Promise.all([loadCompletionsForDate(date), loadNoteForDate(date), loadAppointmentsForDate(date)]);
+      } else if (tab === 'plan') {
+        const days = planDays();
+        if (state.planView === 'week') await loadAppointmentsForRange(days[0], days[6]);
+        else await loadAppointmentsForDate(date);
       } else if (tab === 'appointments') {
         await loadAllAppointments();
       } else if (tab === 'weekly') {
@@ -758,7 +813,11 @@
             <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:12px;">Edit Appointment</p>
             <form onsubmit="event.preventDefault();saveAppointment(this);" style="display:flex;flex-direction:column;gap:8px;">
               <input name="title" placeholder="Title" required value="${escapeHtml(editing.title)}" style="${inputStyle}">
-              <input name="time" type="time" value="${editing.time || ''}" style="${inputStyle}">
+              <div style="display:flex;gap:8px;">
+                <input name="date" type="date" required value="${editing.date}" style="${inputStyle};flex:1;">
+                <input name="time" type="time" value="${editing.time || ''}" style="${inputStyle};flex:1;">
+              </div>
+              ${planDurationSelect(editing.duration_min || 60, inputStyle)}
               <textarea name="notes" placeholder="Notes (optional)" style="${inputStyle};resize:none;min-height:48px;">${editing.notes ? escapeHtml(editing.notes) : ''}</textarea>
               <select name="habit_id" style="${inputStyle};">
                 <option value="">No linked habit</option>
@@ -1083,7 +1142,9 @@
       const activeHabits = state.habits.filter(h => !h.archived && h.frequency !== 'daily');
       const habitOptions = activeHabits.map(h => `<option value="${h.id}">${escapeHtml(h.name)}</option>`).join('');
       const inputStyle = 'width:100%;background:#0a0a0a;border:1px solid #2a2925;color:#f5f1ed;border-radius:4px;padding:9px 10px;font-size:12px;font-family:inherit;outline:none;';
-      const todayStr = dateKey(state.selectedDate);
+      const defaults = state.quickAddDefaults || {};
+      const todayStr = defaults.date || dateKey(state.selectedDate);
+      const timeStr  = defaults.time || '';
 
       return `
         <div onclick="closeQuickAdd()"
@@ -1095,8 +1156,9 @@
               <input name="title" placeholder="Title" required style="${inputStyle}">
               <div style="display:flex;gap:8px;">
                 <input name="date" type="date" required value="${todayStr}" style="${inputStyle};flex:1;">
-                <input name="time" type="time" style="${inputStyle};flex:1;">
+                <input name="time" type="time" value="${timeStr}" style="${inputStyle};flex:1;">
               </div>
+              ${planDurationSelect(60, inputStyle)}
               <textarea name="notes" placeholder="Notes (optional)" style="${inputStyle};resize:none;min-height:48px;"></textarea>
               <select name="habit_id" style="${inputStyle};">
                 <option value="">No linked habit</option>
@@ -1112,16 +1174,290 @@
         </div>`;
     }
 
+    // ─── Plan: hour-by-hour day and week view ─────────────────────────────────────
+    // Time blocks are appointments. Start = appointments.time, length =
+    // appointments.duration_min (60 when empty). Appointments with no time
+    // appear in an "any time" strip above the grid.
+
+    const PLAN_PX  = 1.2;                                  // pixels per minute
+    const PLAN_DUR = [15, 30, 45, 60, 90, 120, 180, 240];
+
+    function planDurationLabel(d) {
+      if (d < 60) return `${d} min`;
+      const h = Math.floor(d / 60), m = d % 60;
+      return m ? `${h} h ${m} min` : `${h} h`;
+    }
+
+    function planDurationSelect(selected, style) {
+      const opts = PLAN_DUR.includes(selected) ? PLAN_DUR : [...PLAN_DUR, selected].sort((a, b) => a - b);
+      return `<select name="duration" aria-label="Duration" style="${style};">${
+        opts.map(d => `<option value="${d}" ${d === selected ? 'selected' : ''}>${planDurationLabel(d)}</option>`).join('')
+      }</select>`;
+    }
+
+    function planHourLabel(h) {
+      if (h === 0 || h === 24) return '12 AM';
+      if (h === 12) return '12 PM';
+      return h < 12 ? `${h} AM` : `${h - 12} PM`;
+    }
+
+    function planApptStart(a) {
+      if (!a.time) return null;
+      const [h, m] = a.time.split(':').map(Number);
+      return isNaN(h) ? null : h * 60 + (m || 0);
+    }
+
+    function planApptDur(a) {
+      const start = planApptStart(a) || 0;
+      return Math.max(15, Math.min(a.duration_min || 60, 1440 - start));
+    }
+
+    function planDays() {
+      if (state.planView === 'week') {
+        const s = new Date(state.selectedDate);
+        s.setDate(s.getDate() - s.getDay());
+        return Array.from({ length: 7 }, (_, i) => { const d = new Date(s); d.setDate(s.getDate() + i); return d; });
+      }
+      return [new Date(state.selectedDate)];
+    }
+
+    // Side-by-side columns for overlapping blocks.
+    function planLayout(list) {
+      const items = list.slice().sort((a, b) => planApptStart(a) - planApptStart(b) || planApptDur(b) - planApptDur(a));
+      const pos = {};
+      let cluster = [], clusterEnd = 0;
+      function flush() {
+        const cols = [];
+        cluster.forEach(a => {
+          const s = planApptStart(a), e = s + planApptDur(a);
+          let placed = false;
+          for (let i = 0; i < cols.length; i++) {
+            if (cols[i] <= s) { cols[i] = e; pos[a.id] = { c: i }; placed = true; break; }
+          }
+          if (!placed) { pos[a.id] = { c: cols.length }; cols.push(e); }
+        });
+        cluster.forEach(a => { pos[a.id].n = cols.length; });
+        cluster = [];
+      }
+      items.forEach(a => {
+        const s = planApptStart(a), e = s + planApptDur(a);
+        if (cluster.length && s >= clusterEnd) flush();
+        clusterEnd = cluster.length ? Math.max(clusterEnd, e) : e;
+        cluster.push(a);
+      });
+      if (cluster.length) flush();
+      return pos;
+    }
+
+    function renderPlanColumn(d, todayKey, week) {
+      const k    = dateKey(d);
+      const isT  = k === todayKey;
+      const wk   = d.getDay() >= 5;
+      const H    = 24 * 60 * PLAN_PX;
+      const list = (state.appointmentsByDate[k] || []).filter(a => planApptStart(a) !== null);
+      const lay  = planLayout(list);
+
+      let lines = '';
+      for (let h = 0; h < 24; h++) {
+        lines += `<div style="position:absolute;left:0;right:0;top:${h * 60 * PLAN_PX}px;border-top:1px solid #24231f;"></div>`;
+        lines += `<div style="position:absolute;left:0;right:0;top:${(h * 60 + 30) * PLAN_PX}px;border-top:1px dotted #1a1916;"></div>`;
+      }
+
+      const blocks = list.map(a => {
+        const s    = planApptStart(a), dur = planApptDur(a);
+        const p    = lay[a.id] || { c: 0, n: 1 }, w = 100 / p.n;
+        const done = !!a.completed;
+        const top  = s * PLAN_PX, ht = Math.max(dur * PLAN_PX, 22);
+        const short = dur <= 30;
+        return `
+          <div onclick="event.stopPropagation();planBlockClick('${a.id}','${k}')"
+            style="position:absolute;top:${top}px;height:${ht}px;left:calc(${p.c * w}% + 2px);width:calc(${w}% - 4px);box-sizing:border-box;
+              background:${done ? '#141411' : 'rgba(217,119,87,0.18)'};border:1px solid ${done ? '#2a2925' : '#d97757'};border-left:3px solid ${done ? '#444441' : '#d97757'};
+              border-radius:3px;padding:2px 4px;overflow:hidden;cursor:pointer;z-index:2;display:flex;gap:5px;align-items:${short ? 'center' : 'flex-start'};">
+            <button onclick="event.stopPropagation();planToggle('${a.id}','${k}')" aria-label="Mark done"
+              style="flex:none;width:18px;height:18px;border-radius:3px;border:1px solid ${done ? '#d97757' : '#8a8985'};background:${done ? '#d97757' : 'transparent'};color:#0a0a0a;font-size:11px;line-height:1;font-weight:600;cursor:pointer;padding:0;">${done ? '✓' : ''}</button>
+            <div style="min-width:0;font-size:${week ? 10 : 11}px;line-height:1.25;color:${done ? '#7a7570' : '#f5f1ed'};${done ? 'text-decoration:line-through;' : ''}">
+              <div style="${short ? 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;' : 'overflow-wrap:anywhere;'}">${escapeHtml(a.title)}</div>
+              ${!week && !short ? `<div style="font-size:9px;color:#8a8985;text-decoration:none;">${formatApptTime(a.time)}</div>` : ''}
+            </div>
+          </div>`;
+      }).join('');
+
+      let now = '';
+      if (isT) {
+        const n = new Date(), nm = n.getHours() * 60 + n.getMinutes();
+        now = `<div style="position:absolute;left:0;right:0;top:${nm * PLAN_PX}px;border-top:1px solid #d97757;z-index:3;pointer-events:none;">
+                 <div style="position:absolute;left:-3px;top:-4px;width:7px;height:7px;border-radius:50%;background:#d97757;"></div></div>`;
+      }
+
+      const bg = isT ? 'rgba(217,119,87,0.05)' : wk ? '#0e0e0c' : 'transparent';
+      return `<div onclick="planGridClick(event,'${k}')"
+        style="position:relative;height:${H}px;border-left:1px solid #2a2925;cursor:cell;background:${bg};">${lines}${blocks}${now}</div>`;
+    }
+
+    function renderPlanView() {
+      const week     = state.planView === 'week';
+      const days     = planDays();
+      const todayKey = dateKey(new Date());
+      const H        = 24 * 60 * PLAN_PX;
+      const grid     = `44px repeat(${days.length},${week ? 'minmax(84px,1fr)' : 'minmax(0,1fr)'})`;
+      const dayShort = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+      const seg = (v, label) => {
+        const on = state.planView === v;
+        return `<button onclick="setPlanView('${v}')"
+          style="padding:5px 14px;font-size:11px;border:none;cursor:pointer;background:${on ? '#d97757' : 'transparent'};color:${on ? '#0a0a0a' : '#8a8985'};font-weight:${on ? 600 : 400};">${label}</button>`;
+      };
+      const toolbar = `
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <div style="display:flex;border:1px solid #2a2925;border-radius:4px;overflow:hidden;">${seg('day', 'Day')}${seg('week', 'Week')}</div>
+          <button onclick="planToday()"
+            style="background:none;border:1px solid #2a2925;color:#8a8985;border-radius:4px;padding:5px 12px;font-size:11px;cursor:pointer;">Today</button>
+        </div>`;
+
+      // Sticky header: day names (week only) and appointments without a time.
+      const anyUntimed = days.some(d => (state.appointmentsByDate[dateKey(d)] || []).some(a => planApptStart(a) === null));
+      let head = `<div style="display:grid;grid-template-columns:${grid};position:sticky;top:0;z-index:5;background:#0a0a0a;border-bottom:1px solid #2a2925;">
+        <div style="font-size:8px;color:#5a5955;padding:7px 6px 0 0;text-align:right;">${anyUntimed ? 'any time' : ''}</div>`;
+      days.forEach(d => {
+        const k   = dateKey(d);
+        const isT = k === todayKey;
+        const wk  = d.getDay() >= 5;
+        const untimed = (state.appointmentsByDate[k] || []).filter(a => planApptStart(a) === null);
+        const label = week
+          ? `<button onclick="planOpenDay('${k}')"
+               style="background:none;border:none;cursor:pointer;width:100%;padding:5px 0 3px;font-size:10px;font-family:inherit;color:${isT ? '#d97757' : '#8a8985'};">
+               ${dayShort[d.getDay()]} <b style="font-size:12px;font-weight:600;color:${isT ? '#d97757' : '#f5f1ed'};">${d.getDate()}</b></button>`
+          : '';
+        const chips = untimed.map(a => `
+          <button onclick="planBlockClick('${a.id}','${k}')"
+            style="display:block;width:100%;text-align:left;margin:2px 0 0;padding:3px 5px;font-size:10px;font-family:inherit;border-radius:3px;border:1px solid #2a2925;background:#141411;color:${a.completed ? '#7a7570' : '#f5f1ed'};${a.completed ? 'text-decoration:line-through;' : ''}cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(a.title)}</button>`).join('');
+        head += `<div style="border-left:1px solid #2a2925;padding:0 2px ${untimed.length ? 4 : 0}px;${wk ? 'background:#0e0e0c;' : ''}">${label}${chips}</div>`;
+      });
+      head += `</div>`;
+
+      let labels = '';
+      for (let h = 1; h < 24; h++) {
+        labels += `<div style="position:absolute;right:6px;top:${h * 60 * PLAN_PX}px;transform:translateY(-50%);font-size:9px;color:#7a7570;white-space:nowrap;">${planHourLabel(h)}</div>`;
+      }
+      const body = `<div style="display:grid;grid-template-columns:${grid};">
+        <div style="position:relative;height:${H}px;">${labels}</div>
+        ${days.map(d => renderPlanColumn(d, todayKey, week)).join('')}
+      </div>`;
+
+      return `${toolbar}
+        <div id="plan-scroll" style="overflow:auto;height:60vh;border:1px solid #2a2925;border-radius:6px;background:#0a0a0a;-webkit-overflow-scrolling:touch;">
+          <div style="min-width:${week ? 680 : 0}px;">${head}${body}</div>
+        </div>`;
+    }
+
+    // Called at the end of render(): fill the screen, then restore the scroll
+    // position (or jump to about an hour before now).
+    function planAfterRender() {
+      const sc = document.getElementById('plan-scroll');
+      if (!sc) return;
+      sc.style.height = Math.max(240, window.innerHeight - sc.getBoundingClientRect().top - 16) + 'px';
+      if (state.planScroll === null) {
+        const keys = planDays().map(dateKey);
+        const n = new Date(), nm = n.getHours() * 60 + n.getMinutes();
+        const focus = keys.includes(dateKey(n)) ? nm - 60 : 7 * 60;
+        sc.scrollTop = Math.max(0, focus * PLAN_PX);
+        state.planScroll = sc.scrollTop;
+      } else {
+        sc.scrollTop = state.planScroll;
+      }
+    }
+
+    function planGridClick(e, k) {
+      const y = e.clientY - e.currentTarget.getBoundingClientRect().top;
+      let m = Math.floor(y / PLAN_PX / 30) * 30;
+      m = Math.max(0, Math.min(m, 24 * 60 - 30));
+      const hh = String(Math.floor(m / 60)).padStart(2, '0');
+      const mm = String(m % 60).padStart(2, '0');
+      state.quickAddDefaults = { date: k, time: `${hh}:${mm}` };
+      state.quickAddOpen = true;
+      render();
+    }
+
+    // Past days stay read-only for editing, matching the Today list.
+    function planBlockClick(id, k) {
+      const [y, m, d] = k.split('-').map(Number);
+      const date = new Date(y, m - 1, d);
+      if (isPastDate(date)) return;
+      state.selectedDate = date;
+      openAppointmentForm(id);
+    }
+
+    async function planToggle(id, k) {
+      const a = (state.appointmentsByDate[k] || []).find(x => x.id === id);
+      if (!a) return;
+      a.completed = !a.completed;
+      render();
+      await db.from('appointments').update({ completed: a.completed }).eq('id', id);
+      state.allAppointments = null;
+    }
+
+    async function setPlanView(v) {
+      state.planView = v;
+      try { localStorage.setItem('planView', v); } catch (e) {}
+      await loadTabData();
+      render();
+    }
+
+    async function planOpenDay(k) {
+      const [y, m, d] = k.split('-').map(Number);
+      state.selectedDate = new Date(y, m - 1, d);
+      await setPlanView('day');
+    }
+
+    async function planToday() {
+      state.selectedDate = new Date();
+      state.planScroll = null;
+      await loadTabData();
+      render();
+    }
+
+    // Keeps a Plan tab left open on an iPad current: refreshes from the
+    // server each minute, rolls over at midnight, and scrolls back to "now"
+    // after five idle minutes.
+    function startPlanTicker() {
+      const touch = () => { state.planLastTouch = Date.now(); };
+      document.addEventListener('pointerdown', touch, { passive: true });
+      document.addEventListener('scroll', touch, true);
+      let lastDay = dateKey(new Date());
+      setInterval(async () => {
+        if (state.activeTab !== 'plan' || state.quickAddOpen || state.appointmentFormOpen || state.calendarOpen) return;
+        try {
+          const nowKey = dateKey(new Date());
+          if (nowKey !== lastDay) {
+            if (dateKey(state.selectedDate) === lastDay) state.selectedDate = new Date();
+            lastDay = nowKey;
+            state.planScroll = null;
+          } else if (Date.now() - state.planLastTouch > 5 * 60 * 1000) {
+            state.planScroll = null;
+            state.planLastTouch = Date.now();
+          }
+          planDays().forEach(d => { state.appointmentsByDate[dateKey(d)] = undefined; });
+          await loadTabData();
+          render();
+        } catch (e) { console.warn('Plan refresh failed', e); }
+      }, 60000);
+    }
+
     // ─── Main render ──────────────────────────────────────────────────────────────
 
     function render() {
+      // Remember where the Plan grid was scrolled before the DOM is rebuilt.
+      const planEl = document.getElementById('plan-scroll');
+      if (planEl && state.planScroll !== null) state.planScroll = planEl.scrollTop;
+
       // Prayer tab only visible if user has a Prayers habit
       if (state.activeTab === 'prayer' && !state.prayerHabitId) state.activeTab = 'daily';
 
       // Tab groups with | dividers
-      const tabLabels = { daily:'Today', prayer:'Prayers', weekly:'Week', monthly:'Month', year:'Year', notes:'Notes', appointments:'Appts' };
+      const tabLabels = { daily:'Today', plan:'Plan', prayer:'Prayers', weekly:'Week', monthly:'Month', year:'Year', notes:'Notes', appointments:'Appts' };
       const groups = [
-        ['daily', 'prayer'].filter(t => t !== 'prayer' || !!state.prayerHabitId),
+        ['daily', 'plan', 'prayer'].filter(t => t !== 'prayer' || !!state.prayerHabitId),
         ['weekly', 'monthly', 'year'],
         ['notes', 'appointments'],
       ];
@@ -1153,7 +1489,7 @@
             <p style="color:#8a8985;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;">${label}</p>
             <button onclick="changeMonth(1)"  style="background:none;border:none;color:#8a8985;cursor:pointer;font-size:18px;padding:4px 8px;">›</button>
           </div>`;
-      } else if (tab === 'weekly') {
+      } else if (tab === 'weekly' || (tab === 'plan' && state.planView === 'week')) {
         const dow  = state.selectedDate.getDay();
         const s    = new Date(state.selectedDate); s.setDate(s.getDate() - dow);
         const e    = new Date(s); e.setDate(s.getDate() + 6);
@@ -1193,6 +1529,8 @@
           </div>`;
       }
 
+      const contentMax = tab === 'plan' ? (state.planView === 'week' ? 'none' : '720px') : '480px';
+
       let content = '';
       if      (tab === 'daily')   content = renderDailyView();
       else if (tab === 'prayer')  content = renderPrayerView();
@@ -1200,6 +1538,7 @@
       else if (tab === 'monthly') content = renderMonthlyView();
       else if (tab === 'year')    content = renderYearView();
       else if (tab === 'notes')   content = renderNotesView();
+      else if (tab === 'plan')    content = renderPlanView();
       else if (tab === 'appointments') content = renderAppointmentsTabView();
 
       document.getElementById('root').innerHTML = `
@@ -1227,12 +1566,13 @@
               ${tabGroupDivs[0]}${tabPipe}${tabGroupDivs[1]}${tabPipe}${tabGroupDivs[2]}
             </div>
           </div>
-          <div style="padding:12px 14px;max-width:480px;margin:0 auto;">
+          <div style="padding:12px 14px;max-width:${contentMax};margin:0 auto;">
             ${content}
           </div>
-          <button onclick="toggleQuickAdd()" title="Add appointment"
-            style="position:fixed;bottom:20px;right:20px;width:44px;height:44px;border-radius:50%;background:#d97757;border:none;color:#0a0a0a;font-size:22px;font-weight:400;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;line-height:1;z-index:40;">+</button>
+          ${tab === 'plan' ? '' : `<button onclick="toggleQuickAdd()" title="Add appointment"
+            style="position:fixed;bottom:20px;right:20px;width:44px;height:44px;border-radius:50%;background:#d97757;border:none;color:#0a0a0a;font-size:22px;font-weight:400;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;line-height:1;z-index:40;">+</button>`}
         </div>`;
+      if (tab === 'plan') planAfterRender();
     }
 
     // ─── Boot ─────────────────────────────────────────────────────────────────────
@@ -1271,6 +1611,7 @@
 
       await loadTabData();
       render();
+      startPlanTicker();
     }
 
     initApp();
