@@ -1749,12 +1749,7 @@
                 </svg>
               </button>
               <h1 onclick="goToToday()" style="font-size:14px;font-weight:400;margin:0;cursor:pointer;">Discipline</h1>
-              <button onclick="goToSettings()" style="background:none;border:none;color:#8a8985;cursor:pointer;padding:4px 8px;display:flex;align-items:center;">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/>
-                  <circle cx="8" cy="6" r="2" fill="#0a0a0a"/><circle cx="16" cy="12" r="2" fill="#0a0a0a"/><circle cx="10" cy="18" r="2" fill="#0a0a0a"/>
-                </svg>
-              </button>
+              <button onclick="goToSettings()" aria-label="Manage habits" style="background:none;border:none;color:#8a8985;cursor:pointer;padding:4px 8px;font-size:11px;font-family:inherit;">Habits</button>
             </div>
             ${dateNavHtml}
             <div style="display:flex;border-bottom:1px solid #2a2925;padding:0 10px;align-items:stretch;">
@@ -1766,7 +1761,7 @@
       // Wide screens (iPad): Plan drops the title row and puts the profile
       // and settings icons on the tab row, so the header is two slim rows.
       const profileBtn  = `<button onclick="goToProfile()" aria-label="Profile" style="background:none;border:none;color:#8a8985;cursor:pointer;padding:4px 8px;display:flex;align-items:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg></button>`;
-      const settingsBtn = `<button onclick="goToSettings()" aria-label="Manage habits" style="background:none;border:none;color:#8a8985;cursor:pointer;padding:4px 8px;display:flex;align-items:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="8" cy="6" r="2" fill="#0a0a0a"/><circle cx="16" cy="12" r="2" fill="#0a0a0a"/><circle cx="10" cy="18" r="2" fill="#0a0a0a"/></svg></button>`;
+      const settingsBtn = `<button onclick="goToSettings()" aria-label="Manage habits" style="background:none;border:none;border-bottom:2px solid transparent;color:#7a7570;cursor:pointer;padding:6px 8px;font-size:11px;font-family:inherit;white-space:nowrap;">Habits</button>`;
       const compactPlan = window.innerWidth >= 700;
       if (compactPlan) dateNavHtml = dateNavHtml.split('padding:10px 14px').join('padding:2px 14px');
       const headerHtml = compactPlan ? `
@@ -1828,6 +1823,12 @@
       });
 
       state.prayerHabitId = state.habits.find(h => h.name === 'Prayers')?.id || null;
+
+      const wantTab = new URLSearchParams(window.location.search).get('tab');
+      if (['daily','plan','prayer','weekly','monthly','year','notes','appointments'].includes(wantTab)) {
+        state.activeTab = wantTab;
+        state.selectedDate = new Date();
+      }
 
       await loadTabData();
       render();

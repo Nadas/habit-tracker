@@ -101,20 +101,7 @@
 <body>
   <div class="container">
     <div class="app-header">
-      <div class="app-header-top">
-        <button onclick="goToProfile()" style="background:none;border:none;color:#8a8985;cursor:pointer;padding:4px 8px;display:flex;align-items:center;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
-          </svg>
-        </button>
-        <h1 onclick="goToMain()">Discipline</h1>
-        <button onclick="goToSettings()" style="background:none;border:none;color:#8a8985;cursor:pointer;padding:4px 8px;display:flex;align-items:center;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/>
-            <circle cx="8" cy="6" r="2" fill="#0a0a0a"/><circle cx="16" cy="12" r="2" fill="#0a0a0a"/><circle cx="10" cy="18" r="2" fill="#0a0a0a"/>
-          </svg>
-        </button>
-      </div>
+      <div id="banner"></div>
       <div class="page-subheader">
         <button onclick="goBack()">←</button>
         <h2 id="pageTitle">Add New Habit</h2>
@@ -298,12 +285,57 @@
     const nthLabels  = { 1:'1st', 2:'2nd', 3:'3rd', 4:'4th', 5:'Last' };
     const wkdayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
+
+    // ─── Banner (same tabs as the main page, with Habits as the current page) ───
+
+    const BANNER_TABS = [
+      [['daily','Today'], ['plan','Plan'], ['prayer','Prayers']],
+      [['weekly','Week'], ['monthly','Month'], ['year','Year']],
+      [['notes','Notes'], ['appointments','Appts']],
+    ];
+    let bannerHasPrayer = false;
+
+    function goTab(id) { window.location.href = 'habit_tracker_mockup.html?tab=' + id; }
+
+    function renderBanner() {
+      const el = document.getElementById('banner');
+      if (!el) return;
+      const wide   = window.innerWidth >= 700;
+      const aligns = ['flex-start', 'center', 'flex-end'];
+      const tabBtn = (id, label) =>
+        `<button onclick="goTab('${id}')" style="padding:6px 6px;font-size:11px;background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;color:#7a7570;white-space:nowrap;font-family:inherit;">${label}</button>`;
+      const groups = BANNER_TABS.map((g, gi) =>
+        `<div style="display:flex;align-items:center;justify-content:${aligns[gi]};flex:1;">${
+          g.filter(([id]) => id !== 'prayer' || bannerHasPrayer).map(([id, l]) => tabBtn(id, l)).join('')}</div>`);
+      const pipe = `<span style="color:#3a3530;font-size:13px;align-self:center;flex-shrink:0;">|</span>`;
+      const tabs = groups[0] + pipe + groups[1] + pipe + groups[2];
+      const profile = `<button onclick="goToProfile()" aria-label="Profile" style="background:none;border:none;color:#8a8985;cursor:pointer;padding:4px 8px;display:flex;align-items:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg></button>`;
+      const habitsBtn = `<button onclick="goHabits()" aria-label="Manage habits" style="padding:6px 8px;font-size:11px;background:none;border:none;border-bottom:2px solid #d97757;cursor:pointer;color:#f5f1ed;white-space:nowrap;font-family:inherit;">Habits</button>`;
+      el.innerHTML = wide
+        ? `<div style="display:flex;align-items:center;padding:0 6px;border-bottom:1px solid #2a2925;">${profile}<div style="display:flex;flex:1;align-items:stretch;padding:0 6px;">${tabs}</div>${habitsBtn}</div>`
+        : `<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #2a2925;">${profile}<h1 onclick="goToMain()" style="font-size:14px;font-weight:400;margin:0;cursor:pointer;">Discipline</h1>${habitsBtn}</div>
+           <div style="display:flex;border-bottom:1px solid #2a2925;padding:0 10px;align-items:stretch;">${tabs}</div>`;
+    }
+    window.addEventListener('resize', renderBanner);
+    renderBanner();
+
+    async function loadBannerPrayer() {
+      try {
+        const { data } = await db.from('habits').select('id').eq('user_id', currentUser.id).eq('name', 'Prayers').limit(1);
+        bannerHasPrayer = !!(data && data.length);
+        renderBanner();
+      } catch (e) {}
+    }
+
+    function goHabits() { window.location.href = 'habit_tracker_manage_habits_mockup.html'; }
+
     // ─── Init ─────────────────────────────────────────────────────────────────
 
     async function initApp() {
       const { data: { session } } = await db.auth.getSession();
       if (!session) { window.location.href = 'habit_tracker_login.html'; return; }
       currentUser = session.user;
+      loadBannerPrayer();
 
       // Frequency change
       document.querySelectorAll('input[name="frequency"]').forEach(r =>
